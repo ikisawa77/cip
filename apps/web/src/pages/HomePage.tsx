@@ -1,3 +1,4 @@
+import { homepageContentDefaults, type HomepageContent } from "@cip/shared";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -36,36 +37,15 @@ type CatalogCategory = {
   }>;
 };
 
+const supportIcons = [Layers3, Wallet, Boxes] as const;
+const trustIcons = [ShieldCheck, Wallet, TimerReset] as const;
+
 function formatMoney(cents: number) {
   return new Intl.NumberFormat("th-TH", {
     style: "currency",
     currency: "THB"
   }).format(cents / 100);
 }
-
-const supportPoints = [
-  {
-    icon: Layers3,
-    title: "เมนูหมวดหมู่ช่วยให้เลือกซื้อเร็วขึ้น",
-    body: "แยกสินค้าเป็นหมวดชัดเจนตั้งแต่หน้าแรก ลูกค้าสแกนเจอหมวดที่ต้องการก่อน แล้วค่อยลงลึกไปที่สินค้ารายชิ้นได้ทันที"
-  },
-  {
-    icon: Wallet,
-    title: "เติมเงินแยกหน้าเพื่อใช้งานง่ายขึ้น",
-    body: "แยก flow เติมเงินออกจากหน้า account ให้ใช้งานสะดวกขึ้น ทั้งลูกค้าใหม่และลูกค้าประจำเข้าถึง PromptPay, TrueMoney และ K-Biz match ได้เร็ว"
-  },
-  {
-    icon: Boxes,
-    title: "โครงร้านพร้อมต่อยอดงานขายจริง",
-    body: "ยังคงมี inventory, provider config, queue jobs และเอกสาร handoff ภาษาไทยครบสำหรับย้ายเครื่องหรือพัฒนาต่อ"
-  }
-];
-
-const trustPoints = [
-  { icon: ShieldCheck, label: "Webhook + job queue" },
-  { icon: Wallet, label: "Wallet / PromptPay / Top-up" },
-  { icon: TimerReset, label: "พร้อมทดสอบ localhost" }
-];
 
 function getCategoryIcon(slug: string) {
   if (slug.includes("wallet") || slug.includes("topup")) {
@@ -88,7 +68,12 @@ export function HomePage() {
     queryKey: ["catalog"],
     queryFn: () => apiFetch<CatalogCategory[]>("/api/catalog")
   });
+  const homepageContentQuery = useQuery({
+    queryKey: ["content", "homepage"],
+    queryFn: () => apiFetch<HomepageContent>("/api/content/homepage")
+  });
 
+  const content = homepageContentQuery.data ?? homepageContentDefaults;
   const categories =
     catalogQuery.data?.map((category) => ({
       ...category,
@@ -114,7 +99,7 @@ export function HomePage() {
         <div className="grid gap-8 lg:grid-cols-[1.08fr_0.92fr] lg:items-end">
           <div className="max-w-3xl">
             <motion.div className="chip inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm text-[var(--brand)]" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-              <Sparkles size={16} /> หน้าร้านแยกหมวดหมู่ชัด และมีหน้าเติมเงินพร้อมใช้
+              <Sparkles size={16} /> {content.heroBadge}
             </motion.div>
 
             <motion.h1
@@ -123,41 +108,45 @@ export function HomePage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
             >
-              เลือกหมวดสินค้าได้เร็ว เติมเงินได้สะดวก และพร้อมซื้อภายในไม่กี่คลิก
+              {content.heroTitle}
             </motion.h1>
 
             <motion.p className="mt-4 max-w-2xl text-base leading-8 muted-text md:text-lg" initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-              โครงหน้าร้านรอบนี้ถูกจัดใหม่ให้ลูกค้าเห็นหมวดชัดก่อน เหมาะกับร้านเติมเกม ขาย code และลิงก์ดาวน์โหลดที่ต้องการให้ลูกค้าหาสินค้าเจอไวขึ้นและเติม Wallet ได้จากหน้าเฉพาะ
+              {content.heroDescription}
             </motion.p>
 
             <motion.div className="mt-6 flex flex-wrap gap-3" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
               <a className="primary-button rounded-full px-5 py-3 text-sm font-medium" href="#store-categories">
-                เลือกหมวดสินค้า
+                {content.primaryCtaLabel}
               </a>
               <Link className="secondary-button rounded-full px-5 py-3 text-sm font-medium" to="/topup">
-                ไปหน้าเติมเงิน
+                {content.secondaryCtaLabel}
               </Link>
             </motion.div>
 
             <motion.div className="mt-8 flex flex-wrap gap-4 text-sm muted-text" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
-              {trustPoints.map(({ icon: Icon, label }) => (
-                <div className="inline-flex items-center gap-2" key={label}>
-                  <Icon size={16} className="text-[var(--brand)]" />
-                  {label}
-                </div>
-              ))}
+              {content.trustLabels.map((label, index) => {
+                const Icon = trustIcons[index];
+
+                return (
+                  <div className="inline-flex items-center gap-2" key={label}>
+                    <Icon className="text-[var(--brand)]" size={16} />
+                    {label}
+                  </div>
+                );
+              })}
             </motion.div>
           </div>
 
           <motion.div className="grid gap-4" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.12 }}>
             <div className="panel-soft rounded-[2rem] p-5">
-              <div className="section-label">Quick Search</div>
+              <div className="section-label">{content.quickSearchLabel}</div>
               <label className="relative mt-4 block">
                 <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <input
                   className="input-field rounded-full px-11 py-3 text-sm"
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="ค้นหาสินค้า หมวด หรือคำอธิบาย"
+                  placeholder={content.quickSearchPlaceholder}
                   value={search}
                 />
               </label>
@@ -176,7 +165,7 @@ export function HomePage() {
                     </Link>
                   ))
                 ) : (
-                  <div className="panel rounded-[1.4rem] px-4 py-4 text-sm muted-text">ไม่พบสินค้าที่ตรงกับตัวกรองในตอนนี้</div>
+                  <div className="panel rounded-[1.4rem] px-4 py-4 text-sm muted-text">{content.quickSearchEmptyText}</div>
                 )}
               </div>
             </div>
@@ -185,27 +174,29 @@ export function HomePage() {
       </section>
 
       <section className="grid gap-5 lg:grid-cols-3">
-        {supportPoints.map((item, index) => {
-          const Icon = item.icon;
+        {content.supportCards.map((item, index) => {
+          const Icon = supportIcons[index];
 
           return (
-          <motion.article
-            className="panel-soft rounded-[2rem] px-5 py-6"
-            initial={{ opacity: 0, y: 24 }}
-            transition={{ delay: index * 0.06 }}
-            viewport={{ once: true, amount: 0.35 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            key={item.title}
-          >
-            <div className="section-head">
-              <div className="section-head__icon">
-                <Icon size={18} />
+            <motion.article
+              className="panel-soft rounded-[2rem] px-5 py-6"
+              initial={{ opacity: 0, y: 24 }}
+              key={`${item.title}-${index}`}
+              transition={{ delay: index * 0.06 }}
+              viewport={{ once: true, amount: 0.35 }}
+              whileInView={{ opacity: 1, y: 0 }}
+            >
+              <div className="section-head">
+                <div className="section-head__icon">
+                  <Icon size={18} />
+                </div>
+                <div className="section-label">
+                  {content.supportSectionLabel} {String(index + 1).padStart(2, "0")}
+                </div>
               </div>
-              <div className="section-label">Support {String(index + 1).padStart(2, "0")}</div>
-            </div>
-            <h2 className="mt-3 text-2xl font-semibold text-slate-950">{item.title}</h2>
-            <p className="mt-3 text-sm leading-7 muted-text">{item.body}</p>
-          </motion.article>
+              <h2 className="mt-3 text-2xl font-semibold text-slate-950">{item.title}</h2>
+              <p className="mt-3 text-sm leading-7 muted-text">{item.body}</p>
+            </motion.article>
           );
         })}
       </section>
@@ -213,12 +204,12 @@ export function HomePage() {
       <section className="panel rounded-[2rem] px-5 py-5" id="store-categories">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="section-label">Store Categories</div>
-            <h2 className="mt-2 text-3xl font-semibold text-slate-950">เมนูหมวดหมู่ฝั่งหน้าร้าน</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-7 muted-text">เลือกหมวดก่อนแล้วค่อยดูสินค้าในหมวดนั้นได้ทันที เหมาะกับร้านที่ขายหลายประเภททั้งเติมเกม โค้ด และสินค้า digital พร้อมส่ง</p>
+            <div className="section-label">{content.categorySectionLabel}</div>
+            <h2 className="mt-2 text-3xl font-semibold text-slate-950">{content.categorySectionTitle}</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-7 muted-text">{content.categorySectionDescription}</p>
           </div>
           <div className="text-sm muted-text">
-            {selectedCategorySlug === "all" ? `แสดงทั้งหมด ${totalVisibleProducts} รายการ` : `กำลังกรองตามหมวด "${selectedCategorySlug}"`}
+            {selectedCategorySlug === "all" ? `แสดงทั้งหมด ${totalVisibleProducts} รายการ` : `${content.filteredCategoryPrefix} "${selectedCategorySlug}"`}
           </div>
         </div>
 
@@ -236,7 +227,7 @@ export function HomePage() {
             }
             type="button"
           >
-            ทุกหมวด
+            {content.allCategoriesLabel}
           </button>
           {categories.map((category) => (
             <button
@@ -265,10 +256,10 @@ export function HomePage() {
             <motion.section
               className="grid gap-6 lg:grid-cols-[0.72fr_1.28fr]"
               initial={{ opacity: 0, y: 32 }}
+              key={category.id}
               transition={{ duration: 0.35, delay: categoryIndex * 0.04 }}
               viewport={{ once: true, amount: 0.2 }}
               whileInView={{ opacity: 1, y: 0 }}
-              key={category.id}
             >
               <div className="panel-soft rounded-[2rem] p-5">
                 <div className="section-head">
@@ -278,20 +269,20 @@ export function HomePage() {
                       return <Icon size={18} />;
                     })()}
                   </div>
-                  <div className="section-label">Category</div>
+                  <div className="section-label">{content.categoryPanelLabel}</div>
                 </div>
                 <h3 className="mt-3 text-3xl font-semibold text-slate-950">{category.name}</h3>
-                <p className="mt-3 text-sm leading-7 muted-text">{category.description ?? "หมวดนี้พร้อมต่อยอด flow สินค้าและ checkout ได้ทันที"}</p>
+                <p className="mt-3 text-sm leading-7 muted-text">{category.description ?? content.categoryFallbackDescription}</p>
                 <div className="mt-8 icon-chip text-sm">
                   <Boxes className="icon-chip__icon" size={15} />
                   {category.products.length} รายการที่แสดง
                 </div>
                 <div className="mt-5 flex flex-wrap gap-4">
                   <Link className="inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]" to={`/category/${category.slug}`}>
-                    เปิดหน้าหมวดนี้ <ArrowRight size={16} />
+                    {content.categoryBrowseLabel} <ArrowRight size={16} />
                   </Link>
                   <Link className="inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]" to="/topup">
-                    ต้องการเติม Wallet ก่อนซื้อ <ArrowRight size={16} />
+                    {content.categoryTopupLabel} <ArrowRight size={16} />
                   </Link>
                 </div>
               </div>
@@ -302,10 +293,10 @@ export function HomePage() {
                     <motion.article
                       className="panel card-hover overflow-hidden rounded-[2rem]"
                       initial={{ opacity: 0, y: 18 }}
+                      key={product.id}
                       transition={{ delay: productIndex * 0.04 }}
                       viewport={{ once: true, amount: 0.3 }}
                       whileInView={{ opacity: 1, y: 0 }}
-                      key={product.id}
                     >
                       {product.coverImage ? (
                         <div className="h-52 overflow-hidden bg-slate-100">
@@ -343,7 +334,7 @@ export function HomePage() {
                     </motion.article>
                   ))
                 ) : (
-                  <div className="panel-soft rounded-[1.8rem] px-5 py-10 text-sm muted-text">ไม่พบสินค้าที่ตรงกับคำค้นในหมวดนี้</div>
+                  <div className="panel-soft rounded-[1.8rem] px-5 py-10 text-sm muted-text">{content.categoryEmptyText}</div>
                 )}
               </div>
             </motion.section>

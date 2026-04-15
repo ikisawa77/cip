@@ -50,6 +50,17 @@ export const passwordResetOtps = mysqlTable("password_reset_otps", {
   createdAt: datetime("created_at").notNull()
 });
 
+export const siteContents = mysqlTable(
+  "site_contents",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    contentKey: varchar("content_key", { length: 120 }).notNull(),
+    valueJson: text("value_json").notNull(),
+    updatedAt: datetime("updated_at").notNull()
+  },
+  (table) => [uniqueIndex("site_contents_key_unique").on(table.contentKey)]
+);
+
 export const categories = mysqlTable("categories", {
   id: varchar("id", { length: 36 }).primaryKey(),
   slug: varchar("slug", { length: 120 }).notNull(),

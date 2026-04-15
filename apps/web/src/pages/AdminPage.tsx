@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { footerContentDefaults, homepageContentDefaults, type FooterContent, type HomepageContent } from "@cip/shared";
 import {
   BadgeDollarSign,
   Boxes,
   FolderCog,
+  Home,
   KeyRound,
   LayoutDashboard,
   PackageCheck,
@@ -139,6 +141,31 @@ const emptyProductForm = {
   isActive: true
 };
 
+function createHomepageContentForm(): HomepageContent {
+  return {
+    ...homepageContentDefaults,
+    trustLabels: [
+      homepageContentDefaults.trustLabels[0],
+      homepageContentDefaults.trustLabels[1],
+      homepageContentDefaults.trustLabels[2]
+    ],
+    supportCards: homepageContentDefaults.supportCards.map((card) => ({ ...card })) as HomepageContent["supportCards"]
+  };
+}
+
+function createFooterContentForm(): FooterContent {
+  return {
+    ...footerContentDefaults,
+    statusPills: [
+      footerContentDefaults.statusPills[0],
+      footerContentDefaults.statusPills[1],
+      footerContentDefaults.statusPills[2]
+    ],
+    quickLinks: footerContentDefaults.quickLinks.map((link) => ({ ...link })) as FooterContent["quickLinks"],
+    supportLinks: footerContentDefaults.supportLinks.map((link) => ({ ...link })) as FooterContent["supportLinks"]
+  };
+}
+
 function formatMoney(cents: number) {
   return new Intl.NumberFormat("th-TH", {
     style: "currency",
@@ -168,8 +195,49 @@ function getCategoryBadgeText(category: CategoryRow) {
   return `${category.totalProducts} สินค้า`;
 }
 
+function updateSupportCard(
+  content: HomepageContent,
+  index: number,
+  field: "title" | "body",
+  value: string
+): HomepageContent {
+  return {
+    ...content,
+    supportCards: content.supportCards.map((card, cardIndex) => (cardIndex === index ? { ...card, [field]: value } : card)) as HomepageContent["supportCards"]
+  };
+}
+
+function updateTrustLabel(content: HomepageContent, index: number, value: string): HomepageContent {
+  return {
+    ...content,
+    trustLabels: content.trustLabels.map((label, labelIndex) => (labelIndex === index ? value : label)) as HomepageContent["trustLabels"]
+  };
+}
+
+function updateFooterStatusPill(content: FooterContent, index: number, value: string): FooterContent {
+  return {
+    ...content,
+    statusPills: content.statusPills.map((pill, pillIndex) => (pillIndex === index ? value : pill)) as FooterContent["statusPills"]
+  };
+}
+
+function updateFooterLink(
+  content: FooterContent,
+  group: "quickLinks" | "supportLinks",
+  index: number,
+  field: "label" | "href",
+  value: string
+): FooterContent {
+  return {
+    ...content,
+    [group]: content[group].map((link, linkIndex) => (linkIndex === index ? { ...link, [field]: value } : link)) as FooterContent[typeof group]
+  };
+}
+
 const adminNavItems = [
   { label: "ภาพรวม", href: "#admin-overview", icon: LayoutDashboard },
+  { label: "ข้อความหน้าแรก", href: "#admin-homepage", icon: Home },
+  { label: "ข้อความ footer", href: "#admin-footer", icon: PackageCheck },
   { label: "หมวดหมู่สินค้า", href: "#admin-categories", icon: Tags },
   { label: "คลังโค้ด", href: "#admin-inventory", icon: KeyRound },
   { label: "สินค้า", href: "#admin-products", icon: PackagePlus },
@@ -199,6 +267,12 @@ export function AdminPage() {
   const [productForm, setProductForm] = useState(emptyProductForm);
   const [productMessage, setProductMessage] = useState<string | null>(null);
   const [productError, setProductError] = useState<string | null>(null);
+  const [homepageForm, setHomepageForm] = useState<HomepageContent>(createHomepageContentForm);
+  const [homepageMessage, setHomepageMessage] = useState<string | null>(null);
+  const [homepageError, setHomepageError] = useState<string | null>(null);
+  const [footerForm, setFooterForm] = useState<FooterContent>(createFooterContentForm);
+  const [footerMessage, setFooterMessage] = useState<string | null>(null);
+  const [footerError, setFooterError] = useState<string | null>(null);
   const [inventoryForm, setInventoryForm] = useState(emptyInventoryForm);
   const [inventoryBulkProductId, setInventoryBulkProductId] = useState("");
   const [inventoryBulkKind, setInventoryBulkKind] = useState<InventoryItemRow["kind"]>("code");
@@ -217,6 +291,18 @@ export function AdminPage() {
         usersCount: number;
         pendingJobs: number;
       }>("/api/admin/dashboard"),
+    enabled: user?.role === "admin"
+  });
+
+  const homepageContentQuery = useQuery({
+    queryKey: ["admin", "content", "homepage"],
+    queryFn: () => apiFetch<HomepageContent>("/api/admin/content/homepage"),
+    enabled: user?.role === "admin"
+  });
+
+  const footerContentQuery = useQuery({
+    queryKey: ["admin", "content", "footer"],
+    queryFn: () => apiFetch<FooterContent>("/api/admin/content/footer"),
     enabled: user?.role === "admin"
   });
 
@@ -422,6 +508,55 @@ export function AdminPage() {
     }
   });
 
+  const updateHomepageContentMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<HomepageContent>("/api/admin/content/homepage", {
+        method: "PUT",
+        body: JSON.stringify(homepageForm)
+      }),
+    onSuccess: async (result) => {
+      setHomepageForm({
+        ...result,
+        trustLabels: [result.trustLabels[0], result.trustLabels[1], result.trustLabels[2]],
+        supportCards: result.supportCards.map((card) => ({ ...card })) as HomepageContent["supportCards"]
+      });
+      setHomepageError(null);
+      setHomepageMessage("บันทึกข้อความหน้าแรกเรียบร้อย");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "content", "homepage"] }),
+        queryClient.invalidateQueries({ queryKey: ["content", "homepage"] })
+      ]);
+    },
+    onError: (error) => {
+      setHomepageError(error instanceof Error ? error.message : "บันทึกข้อความหน้าแรกไม่สำเร็จ");
+    }
+  });
+
+  const updateFooterContentMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<FooterContent>("/api/admin/content/footer", {
+        method: "PUT",
+        body: JSON.stringify(footerForm)
+      }),
+    onSuccess: async (result) => {
+      setFooterForm({
+        ...result,
+        statusPills: [result.statusPills[0], result.statusPills[1], result.statusPills[2]],
+        quickLinks: result.quickLinks.map((link) => ({ ...link })) as FooterContent["quickLinks"],
+        supportLinks: result.supportLinks.map((link) => ({ ...link })) as FooterContent["supportLinks"]
+      });
+      setFooterError(null);
+      setFooterMessage("บันทึก footer เรียบร้อย");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "content", "footer"] }),
+        queryClient.invalidateQueries({ queryKey: ["content", "footer"] })
+      ]);
+    },
+    onError: (error) => {
+      setFooterError(error instanceof Error ? error.message : "บันทึก footer ไม่สำเร็จ");
+    }
+  });
+
   const createInventoryMutation = useMutation({
     mutationFn: () =>
       apiFetch<{ id: string }>("/api/admin/inventory/items", {
@@ -552,6 +687,37 @@ export function AdminPage() {
   }, [providerQuery.data, selectedProvider]);
 
   useEffect(() => {
+    if (!homepageContentQuery.data) {
+      return;
+    }
+
+    setHomepageForm({
+      ...homepageContentQuery.data,
+      trustLabels: [
+        homepageContentQuery.data.trustLabels[0],
+        homepageContentQuery.data.trustLabels[1],
+        homepageContentQuery.data.trustLabels[2]
+      ],
+      supportCards: homepageContentQuery.data.supportCards.map((card) => ({ ...card })) as HomepageContent["supportCards"]
+    });
+    setHomepageError(null);
+  }, [homepageContentQuery.data]);
+
+  useEffect(() => {
+    if (!footerContentQuery.data) {
+      return;
+    }
+
+    setFooterForm({
+      ...footerContentQuery.data,
+      statusPills: [footerContentQuery.data.statusPills[0], footerContentQuery.data.statusPills[1], footerContentQuery.data.statusPills[2]],
+      quickLinks: footerContentQuery.data.quickLinks.map((link) => ({ ...link })) as FooterContent["quickLinks"],
+      supportLinks: footerContentQuery.data.supportLinks.map((link) => ({ ...link })) as FooterContent["supportLinks"]
+    });
+    setFooterError(null);
+  }, [footerContentQuery.data]);
+
+  useEffect(() => {
     const firstProduct = productsQuery.data?.[0];
     if (!firstProduct) {
       return;
@@ -673,6 +839,501 @@ export function AdminPage() {
           );
         })}
       </section>
+
+      <div className="grid gap-6 xl:grid-cols-[1fr_1fr]" id="admin-homepage">
+        <section className="panel rounded-[2.5rem] p-6">
+          <div className="section-head">
+            <div className="section-head__icon">
+              <Home size={18} />
+            </div>
+            <p className="section-label">Homepage Content</p>
+          </div>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-950">แก้ไขข้อความหน้าแรกทั้งหมด</h2>
+          <p className="mt-2 text-sm muted-text">
+            ใช้ส่วนนี้จัดการข้อความที่ลูกค้าเห็นในหน้าแรก ทั้ง hero, ปุ่มหลัก, quick search, จุดขาย และข้อความส่วนหมวดสินค้า โดยไม่ต้องกลับไปแก้โค้ดเอง
+          </p>
+
+          <div className="mt-5 space-y-6">
+            <div className="panel-soft rounded-[1.9rem] p-5">
+              <div className="section-label">Hero Section</div>
+              <div className="mt-4 space-y-3">
+                <input
+                  className="input-field"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, heroBadge: event.target.value }))}
+                  placeholder="ข้อความ badge ด้านบน"
+                  value={homepageForm.heroBadge}
+                />
+                <textarea
+                  className="input-field min-h-28"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, heroTitle: event.target.value }))}
+                  placeholder="หัวข้อใหญ่หน้าแรก"
+                  value={homepageForm.heroTitle}
+                />
+                <textarea
+                  className="input-field min-h-32"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, heroDescription: event.target.value }))}
+                  placeholder="คำอธิบายใต้หัวข้อใหญ่"
+                  value={homepageForm.heroDescription}
+                />
+                <div className="grid gap-3 md:grid-cols-2">
+                  <input
+                    className="input-field"
+                    onChange={(event) => setHomepageForm((current) => ({ ...current, primaryCtaLabel: event.target.value }))}
+                    placeholder="ข้อความปุ่มหลัก"
+                    value={homepageForm.primaryCtaLabel}
+                  />
+                  <input
+                    className="input-field"
+                    onChange={(event) => setHomepageForm((current) => ({ ...current, secondaryCtaLabel: event.target.value }))}
+                    placeholder="ข้อความปุ่มรอง"
+                    value={homepageForm.secondaryCtaLabel}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="panel-soft rounded-[1.9rem] p-5">
+              <div className="section-label">Quick Search และ Trust Points</div>
+              <div className="mt-4 space-y-3">
+                <input
+                  className="input-field"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, quickSearchLabel: event.target.value }))}
+                  placeholder="หัวข้อกล่องค้นหา"
+                  value={homepageForm.quickSearchLabel}
+                />
+                <input
+                  className="input-field"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, quickSearchPlaceholder: event.target.value }))}
+                  placeholder="ข้อความ placeholder ช่องค้นหา"
+                  value={homepageForm.quickSearchPlaceholder}
+                />
+                <textarea
+                  className="input-field min-h-24"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, quickSearchEmptyText: event.target.value }))}
+                  placeholder="ข้อความตอนค้นหาแล้วไม่พบสินค้า"
+                  value={homepageForm.quickSearchEmptyText}
+                />
+                <div className="grid gap-3 md:grid-cols-3">
+                  {homepageForm.trustLabels.map((label, index) => (
+                    <input
+                      className="input-field"
+                      key={`trust-${index}`}
+                      onChange={(event) => setHomepageForm((current) => updateTrustLabel(current, index, event.target.value))}
+                      placeholder={`Trust point ${index + 1}`}
+                      value={label}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="panel-soft rounded-[1.9rem] p-5">
+              <div className="section-label">จุดขาย 3 การ์ด</div>
+              <div className="mt-4 space-y-4">
+                <input
+                  className="input-field"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, supportSectionLabel: event.target.value }))}
+                  placeholder="คำขึ้นต้นของการ์ด เช่น Support"
+                  value={homepageForm.supportSectionLabel}
+                />
+                {homepageForm.supportCards.map((card, index) => (
+                  <div className="rounded-[1.5rem] border border-[var(--line)] bg-white/80 p-4" key={`support-card-${index}`}>
+                    <div className="text-sm font-medium text-slate-900">การ์ดจุดขาย {index + 1}</div>
+                    <div className="mt-3 space-y-3">
+                      <input
+                        className="input-field"
+                        onChange={(event) => setHomepageForm((current) => updateSupportCard(current, index, "title", event.target.value))}
+                        placeholder="หัวข้อการ์ด"
+                        value={card.title}
+                      />
+                      <textarea
+                        className="input-field min-h-24"
+                        onChange={(event) => setHomepageForm((current) => updateSupportCard(current, index, "body", event.target.value))}
+                        placeholder="รายละเอียดการ์ด"
+                        value={card.body}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="panel-soft rounded-[1.9rem] p-5">
+              <div className="section-label">ส่วนหมวดสินค้า</div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <input
+                  className="input-field"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, categorySectionLabel: event.target.value }))}
+                  placeholder="label ของ section หมวด"
+                  value={homepageForm.categorySectionLabel}
+                />
+                <input
+                  className="input-field"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, allCategoriesLabel: event.target.value }))}
+                  placeholder="ข้อความปุ่มทุกหมวด"
+                  value={homepageForm.allCategoriesLabel}
+                />
+                <textarea
+                  className="input-field min-h-24 md:col-span-2"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, categorySectionTitle: event.target.value }))}
+                  placeholder="หัวข้อส่วนหมวดสินค้า"
+                  value={homepageForm.categorySectionTitle}
+                />
+                <textarea
+                  className="input-field min-h-28 md:col-span-2"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, categorySectionDescription: event.target.value }))}
+                  placeholder="คำอธิบายส่วนหมวดสินค้า"
+                  value={homepageForm.categorySectionDescription}
+                />
+                <input
+                  className="input-field"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, filteredCategoryPrefix: event.target.value }))}
+                  placeholder="ข้อความตอนกำลังกดกรองหมวด"
+                  value={homepageForm.filteredCategoryPrefix}
+                />
+                <input
+                  className="input-field"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, categoryPanelLabel: event.target.value }))}
+                  placeholder="ป้าย label บนการ์ดหมวด"
+                  value={homepageForm.categoryPanelLabel}
+                />
+                <textarea
+                  className="input-field min-h-24 md:col-span-2"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, categoryFallbackDescription: event.target.value }))}
+                  placeholder="ข้อความ fallback ของหมวด"
+                  value={homepageForm.categoryFallbackDescription}
+                />
+                <input
+                  className="input-field"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, categoryBrowseLabel: event.target.value }))}
+                  placeholder="ข้อความลิงก์เปิดหน้าหมวด"
+                  value={homepageForm.categoryBrowseLabel}
+                />
+                <input
+                  className="input-field"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, categoryTopupLabel: event.target.value }))}
+                  placeholder="ข้อความลิงก์ไปหน้าเติมเงิน"
+                  value={homepageForm.categoryTopupLabel}
+                />
+                <textarea
+                  className="input-field min-h-24 md:col-span-2"
+                  onChange={(event) => setHomepageForm((current) => ({ ...current, categoryEmptyText: event.target.value }))}
+                  placeholder="ข้อความตอนหมวดนี้ไม่มีสินค้า"
+                  value={homepageForm.categoryEmptyText}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button className="primary-button rounded-full px-5 py-3 text-sm" onClick={() => void updateHomepageContentMutation.mutate()} type="button">
+                บันทึกข้อความหน้าแรก
+              </button>
+              <button
+                className="secondary-button rounded-full px-5 py-3 text-sm"
+                onClick={() => {
+                  setHomepageForm(
+                    homepageContentQuery.data
+                      ? {
+                          ...homepageContentQuery.data,
+                          trustLabels: [
+                            homepageContentQuery.data.trustLabels[0],
+                            homepageContentQuery.data.trustLabels[1],
+                            homepageContentQuery.data.trustLabels[2]
+                          ],
+                          supportCards: homepageContentQuery.data.supportCards.map((card) => ({ ...card })) as HomepageContent["supportCards"]
+                        }
+                      : createHomepageContentForm()
+                  );
+                  setHomepageError(null);
+                  setHomepageMessage(null);
+                }}
+                type="button"
+              >
+                รีเซ็ตฟอร์มข้อความ
+              </button>
+            </div>
+
+            {homepageMessage ? <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{homepageMessage}</div> : null}
+            {homepageError ? <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{homepageError}</div> : null}
+          </div>
+        </section>
+
+        <section className="panel rounded-[2.5rem] p-6">
+          <div className="section-head">
+            <div className="section-head__icon">
+              <Boxes size={18} />
+            </div>
+            <p className="section-label">Homepage Preview Notes</p>
+          </div>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-950">สรุปข้อความที่จะไปแสดงบนหน้าแรก</h2>
+          <div className="mt-5 space-y-4">
+            <div className="panel-soft rounded-[1.75rem] p-5">
+              <div className="text-xs uppercase tracking-[0.24em] text-[var(--brand)]">Hero Badge</div>
+              <div className="mt-2 text-lg font-semibold text-slate-950">{homepageForm.heroBadge}</div>
+            </div>
+            <div className="panel-soft rounded-[1.75rem] p-5">
+              <div className="text-xs uppercase tracking-[0.24em] text-[var(--brand)]">Hero Title</div>
+              <div className="mt-2 text-2xl font-semibold text-slate-950">{homepageForm.heroTitle}</div>
+              <p className="mt-3 text-sm leading-7 muted-text">{homepageForm.heroDescription}</p>
+              <div className="mt-4 flex flex-wrap gap-3 text-sm">
+                <span className="icon-chip">{homepageForm.primaryCtaLabel}</span>
+                <span className="icon-chip">{homepageForm.secondaryCtaLabel}</span>
+              </div>
+            </div>
+            <div className="panel-soft rounded-[1.75rem] p-5">
+              <div className="text-xs uppercase tracking-[0.24em] text-[var(--brand)]">Trust Points</div>
+              <div className="mt-3 grid gap-3">
+                {homepageForm.trustLabels.map((label, index) => (
+                  <div className="icon-chip justify-start text-sm" key={`preview-trust-${index}`}>
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="panel-soft rounded-[1.75rem] p-5">
+              <div className="text-xs uppercase tracking-[0.24em] text-[var(--brand)]">Support Cards</div>
+              <div className="mt-4 space-y-3">
+                {homepageForm.supportCards.map((card, index) => (
+                  <div className="rounded-[1.4rem] border border-[var(--line)] bg-white/90 px-4 py-4" key={`preview-card-${index}`}>
+                    <div className="text-sm font-semibold text-slate-950">{card.title}</div>
+                    <p className="mt-2 text-sm leading-7 muted-text">{card.body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="panel-soft rounded-[1.75rem] p-5">
+              <div className="text-xs uppercase tracking-[0.24em] text-[var(--brand)]">หมวดสินค้า</div>
+              <div className="mt-2 text-lg font-semibold text-slate-950">{homepageForm.categorySectionTitle}</div>
+              <p className="mt-2 text-sm leading-7 muted-text">{homepageForm.categorySectionDescription}</p>
+              <div className="mt-4 grid gap-2 text-sm text-slate-700">
+                <div>ปุ่มทุกหมวด: {homepageForm.allCategoriesLabel}</div>
+                <div>ข้อความกรองหมวด: {homepageForm.filteredCategoryPrefix}</div>
+                <div>ข้อความ fallback: {homepageForm.categoryFallbackDescription}</div>
+                <div>ลิงก์เปิดหน้าหมวด: {homepageForm.categoryBrowseLabel}</div>
+                <div>ลิงก์เติมเงิน: {homepageForm.categoryTopupLabel}</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1fr_1fr]" id="admin-footer">
+        <section className="panel rounded-[2.5rem] p-6">
+          <div className="section-head">
+            <div className="section-head__icon">
+              <PackageCheck size={18} />
+            </div>
+            <p className="section-label">Footer Content</p>
+          </div>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-950">แก้ไข footer ได้ทั้งหมดจากหลังบ้าน</h2>
+          <p className="mt-2 text-sm muted-text">
+            ใช้ส่วนนี้ปรับ footer แบบครบทั้งข้อความหลัก จุดขาย ลิงก์ทางลัด และข้อความติดต่อตอนท้ายเว็บ เพื่อให้ทุกหน้าดูมีน้ำหนักและพร้อมขายมากขึ้น
+          </p>
+
+          <div className="mt-5 space-y-6">
+            <div className="panel-soft rounded-[1.9rem] p-5">
+              <div className="section-label">Hero Footer</div>
+              <div className="mt-4 space-y-3">
+                <input
+                  className="input-field"
+                  onChange={(event) => setFooterForm((current) => ({ ...current, badge: event.target.value }))}
+                  placeholder="ข้อความ badge ของ footer"
+                  value={footerForm.badge}
+                />
+                <textarea
+                  className="input-field min-h-28"
+                  onChange={(event) => setFooterForm((current) => ({ ...current, headline: event.target.value }))}
+                  placeholder="หัวข้อใหญ่ของ footer"
+                  value={footerForm.headline}
+                />
+                <textarea
+                  className="input-field min-h-28"
+                  onChange={(event) => setFooterForm((current) => ({ ...current, description: event.target.value }))}
+                  placeholder="คำอธิบายใต้หัวข้อใหญ่"
+                  value={footerForm.description}
+                />
+              </div>
+            </div>
+
+            <div className="panel-soft rounded-[1.9rem] p-5">
+              <div className="section-label">Status Pills</div>
+              <div className="mt-4 grid gap-3">
+                {footerForm.statusPills.map((pill, index) => (
+                  <input
+                    className="input-field"
+                    key={`footer-pill-${index}`}
+                    onChange={(event) => setFooterForm((current) => updateFooterStatusPill(current, index, event.target.value))}
+                    placeholder={`ข้อความสถานะ ${index + 1}`}
+                    value={pill}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="panel-soft rounded-[1.9rem] p-5">
+              <div className="section-label">ลิงก์ทางลัดชุดที่ 1</div>
+              <div className="mt-4 space-y-3">
+                <input
+                  className="input-field"
+                  onChange={(event) => setFooterForm((current) => ({ ...current, quickLinksTitle: event.target.value }))}
+                  placeholder="หัวข้อชุดลิงก์แรก"
+                  value={footerForm.quickLinksTitle}
+                />
+                {footerForm.quickLinks.map((link, index) => (
+                  <div className="grid gap-3 md:grid-cols-2" key={`quick-link-${index}`}>
+                    <input
+                      className="input-field"
+                      onChange={(event) => setFooterForm((current) => updateFooterLink(current, "quickLinks", index, "label", event.target.value))}
+                      placeholder="ข้อความลิงก์"
+                      value={link.label}
+                    />
+                    <input
+                      className="input-field"
+                      onChange={(event) => setFooterForm((current) => updateFooterLink(current, "quickLinks", index, "href", event.target.value))}
+                      placeholder="ปลายทางลิงก์ เช่น /topup หรือ /#store-categories"
+                      value={link.href}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="panel-soft rounded-[1.9rem] p-5">
+              <div className="section-label">ลิงก์ทางลัดชุดที่ 2 และติดต่อ</div>
+              <div className="mt-4 space-y-3">
+                <input
+                  className="input-field"
+                  onChange={(event) => setFooterForm((current) => ({ ...current, supportLinksTitle: event.target.value }))}
+                  placeholder="หัวข้อชุดลิงก์ที่สอง"
+                  value={footerForm.supportLinksTitle}
+                />
+                {footerForm.supportLinks.map((link, index) => (
+                  <div className="grid gap-3 md:grid-cols-2" key={`support-link-${index}`}>
+                    <input
+                      className="input-field"
+                      onChange={(event) => setFooterForm((current) => updateFooterLink(current, "supportLinks", index, "label", event.target.value))}
+                      placeholder="ข้อความลิงก์"
+                      value={link.label}
+                    />
+                    <input
+                      className="input-field"
+                      onChange={(event) => setFooterForm((current) => updateFooterLink(current, "supportLinks", index, "href", event.target.value))}
+                      placeholder="ปลายทางลิงก์"
+                      value={link.href}
+                    />
+                  </div>
+                ))}
+                <input
+                  className="input-field"
+                  onChange={(event) => setFooterForm((current) => ({ ...current, contactTitle: event.target.value }))}
+                  placeholder="หัวข้อส่วนติดต่อ"
+                  value={footerForm.contactTitle}
+                />
+                <textarea
+                  className="input-field min-h-24"
+                  onChange={(event) => setFooterForm((current) => ({ ...current, contactLine: event.target.value }))}
+                  placeholder="ข้อความติดต่อหลัก"
+                  value={footerForm.contactLine}
+                />
+                <textarea
+                  className="input-field min-h-24"
+                  onChange={(event) => setFooterForm((current) => ({ ...current, contactSubline: event.target.value }))}
+                  placeholder="ข้อความอธิบายเสริม"
+                  value={footerForm.contactSubline}
+                />
+                <input
+                  className="input-field"
+                  onChange={(event) => setFooterForm((current) => ({ ...current, copyright: event.target.value }))}
+                  placeholder="ข้อความลิขสิทธิ์หรือข้อความปิดท้าย"
+                  value={footerForm.copyright}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button className="primary-button rounded-full px-5 py-3 text-sm" onClick={() => void updateFooterContentMutation.mutate()} type="button">
+                บันทึก footer
+              </button>
+              <button
+                className="secondary-button rounded-full px-5 py-3 text-sm"
+                onClick={() => {
+                  setFooterForm(
+                    footerContentQuery.data
+                      ? {
+                          ...footerContentQuery.data,
+                          statusPills: [footerContentQuery.data.statusPills[0], footerContentQuery.data.statusPills[1], footerContentQuery.data.statusPills[2]],
+                          quickLinks: footerContentQuery.data.quickLinks.map((link) => ({ ...link })) as FooterContent["quickLinks"],
+                          supportLinks: footerContentQuery.data.supportLinks.map((link) => ({ ...link })) as FooterContent["supportLinks"]
+                        }
+                      : createFooterContentForm()
+                  );
+                  setFooterError(null);
+                  setFooterMessage(null);
+                }}
+                type="button"
+              >
+                รีเซ็ตฟอร์ม footer
+              </button>
+            </div>
+
+            {footerMessage ? <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{footerMessage}</div> : null}
+            {footerError ? <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{footerError}</div> : null}
+          </div>
+        </section>
+
+        <section className="panel rounded-[2.5rem] p-6">
+          <div className="section-head">
+            <div className="section-head__icon">
+              <ShieldCheck size={18} />
+            </div>
+            <p className="section-label">Footer Preview Notes</p>
+          </div>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-950">สรุป footer ที่จะถูกนำไปแสดง</h2>
+          <div className="mt-5 space-y-4">
+            <div className="panel-soft rounded-[1.75rem] p-5">
+              <div className="text-xs uppercase tracking-[0.24em] text-[var(--brand)]">{footerForm.badge}</div>
+              <div className="mt-2 text-2xl font-semibold text-slate-950">{footerForm.headline}</div>
+              <p className="mt-3 text-sm leading-7 muted-text">{footerForm.description}</p>
+            </div>
+            <div className="panel-soft rounded-[1.75rem] p-5">
+              <div className="text-xs uppercase tracking-[0.24em] text-[var(--brand)]">Status Pills</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {footerForm.statusPills.map((pill) => (
+                  <span className="icon-chip text-sm" key={pill}>
+                    {pill}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="panel-soft rounded-[1.75rem] p-5">
+              <div className="text-sm font-semibold text-slate-950">{footerForm.quickLinksTitle}</div>
+              <div className="mt-3 grid gap-2 text-sm text-slate-700">
+                {footerForm.quickLinks.map((link) => (
+                  <div key={`preview-quick-${link.label}-${link.href}`}>
+                    {link.label} → {link.href}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="panel-soft rounded-[1.75rem] p-5">
+              <div className="text-sm font-semibold text-slate-950">{footerForm.supportLinksTitle}</div>
+              <div className="mt-3 grid gap-2 text-sm text-slate-700">
+                {footerForm.supportLinks.map((link) => (
+                  <div key={`preview-support-${link.label}-${link.href}`}>
+                    {link.label} → {link.href}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="panel-soft rounded-[1.75rem] p-5">
+              <div className="text-sm font-semibold text-slate-950">{footerForm.contactTitle}</div>
+              <p className="mt-2 text-sm leading-7 muted-text">{footerForm.contactLine}</p>
+              <p className="mt-2 text-sm leading-7 muted-text">{footerForm.contactSubline}</p>
+              <div className="mt-4 text-xs uppercase tracking-[0.2em] text-slate-400">{footerForm.copyright}</div>
+            </div>
+          </div>
+        </section>
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]" id="admin-categories">
         <section className="panel rounded-[2.5rem] p-6">

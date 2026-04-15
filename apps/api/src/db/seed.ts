@@ -1,3 +1,5 @@
+import { footerContentDefaults, homepageContentDefaults } from "@cip/shared";
+
 import bcrypt from "bcryptjs";
 
 import { env } from "../config/env";
@@ -18,6 +20,7 @@ import {
   providerConfigs,
   randomPools,
   sessions,
+  siteContents,
   users,
   walletTransactions,
   webhookEvents
@@ -44,6 +47,7 @@ async function main() {
   await db.delete(sessions);
   await db.delete(oauthAccounts);
   await db.delete(providerConfigs);
+  await db.delete(siteContents);
   await db.delete(users);
 
   const timestamp = now();
@@ -261,6 +265,21 @@ async function main() {
     { id: createId(), providerKey: "kbiz", isEnabled: false, configJson: "{}", updatedAt: timestamp },
     { id: createId(), providerKey: "truemoney", isEnabled: false, configJson: "{}", updatedAt: timestamp },
     { id: createId(), providerKey: "rdcw", isEnabled: false, configJson: "{}", updatedAt: timestamp }
+  ]);
+
+  await db.insert(siteContents).values([
+    {
+      id: createId(),
+      contentKey: "homepage",
+      valueJson: JSON.stringify(homepageContentDefaults),
+      updatedAt: timestamp
+    },
+    {
+      id: createId(),
+      contentKey: "footer",
+      valueJson: JSON.stringify(footerContentDefaults),
+      updatedAt: timestamp
+    }
   ]);
 
   await db.insert(users).values([

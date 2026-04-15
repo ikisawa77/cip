@@ -1,6 +1,16 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
-import type { CreateOrderInput, ProductType, WalletTopupInput } from "@cip/shared";
+import {
+  footerContentDefaults,
+  footerContentSchema,
+  homepageContentDefaults,
+  homepageContentSchema,
+  type CreateOrderInput,
+  type FooterContent,
+  type HomepageContent,
+  type ProductType,
+  type WalletTopupInput
+} from "@cip/shared";
 
 import { db } from "../db";
 import {
@@ -17,6 +27,7 @@ import {
   providerConfigs,
   randomPools,
   sessions,
+  siteContents,
   users,
   walletTransactions,
   webhookEvents
@@ -656,6 +667,108 @@ export async function getAdminInventorySummary() {
     availableStock: Number(row.availableStock ?? 0),
     allocatedStock: Number(row.allocatedStock ?? 0)
   }));
+}
+
+function normalizeHomepageContent(rawValue: string | null | undefined) {
+  if (!rawValue) {
+    return homepageContentDefaults;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+    const result = homepageContentSchema.safeParse({
+      ...homepageContentDefaults,
+      ...(typeof parsed === "object" && parsed ? parsed : {})
+    });
+
+    return result.success ? result.data : homepageContentDefaults;
+  } catch {
+    return homepageContentDefaults;
+  }
+}
+
+function normalizeFooterContent(rawValue: string | null | undefined) {
+  if (!rawValue) {
+    return footerContentDefaults;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+    const result = footerContentSchema.safeParse({
+      ...footerContentDefaults,
+      ...(typeof parsed === "object" && parsed ? parsed : {})
+    });
+
+    return result.success ? result.data : footerContentDefaults;
+  } catch {
+    return footerContentDefaults;
+  }
+}
+
+export async function getHomepageContent() {
+  const [row] = await db.select().from(siteContents).where(eq(siteContents.contentKey, "homepage")).limit(1);
+  return normalizeHomepageContent(row?.valueJson);
+}
+
+export async function upsertHomepageContent(input: HomepageContent, actorUserId?: string) {
+  const normalized = homepageContentSchema.parse(input);
+  const valueJson = JSON.stringify(normalized);
+  const timestamp = now();
+  const [existing] = await db.select().from(siteContents).where(eq(siteContents.contentKey, "homepage")).limit(1);
+
+  if (existing) {
+    await db
+      .update(siteContents)
+      .set({
+        valueJson,
+        updatedAt: timestamp
+      })
+      .where(eq(siteContents.id, existing.id));
+  } else {
+    await db.insert(siteContents).values({
+      id: createId(),
+      contentKey: "homepage",
+      valueJson,
+      updatedAt: timestamp
+    });
+  }
+
+  await logAudit("site_content", "homepage", "update", "อัปเดตข้อความหน้าแรกจากหลังบ้าน", actorUserId);
+
+  return normalized;
+}
+
+export async function getFooterContent() {
+  const [row] = await db.select().from(siteContents).where(eq(siteContents.contentKey, "footer")).limit(1);
+  return normalizeFooterContent(row?.valueJson);
+}
+
+export async function upsertFooterContent(input: FooterContent, actorUserId?: string) {
+  const normalized = footerContentSchema.parse(input);
+  const valueJson = JSON.stringify(normalized);
+  const timestamp = now();
+  const [existing] = await db.select().from(siteContents).where(eq(siteContents.contentKey, "footer")).limit(1);
+
+  if (existing) {
+    await db
+      .update(siteContents)
+      .set({
+        valueJson,
+        updatedAt: timestamp
+      })
+      .where(eq(siteContents.id, existing.id));
+  } else {
+    await db.insert(siteContents).values({
+      id: createId(),
+      contentKey: "footer",
+      valueJson,
+      updatedAt: timestamp
+    });
+  }
+
+  await logAudit("site_content", "footer", "update", "อัปเดตข้อความ footer จากหลังบ้าน", actorUserId);
+
+  return normalized;
 }
 
 function createMaskedInventoryLabel(kind: "code" | "download_link" | "account" | "generic", entry: string, index: number) {

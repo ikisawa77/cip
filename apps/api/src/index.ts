@@ -13,8 +13,10 @@ import {
   authLoginSchema,
   authRegisterSchema,
   createOrderSchema,
+  footerContentSchema,
   forgotPasswordRequestSchema,
   forgotPasswordVerifySchema,
+  homepageContentSchema,
   type ProductType,
   walletTopupSchema
 } from "@cip/shared";
@@ -59,6 +61,8 @@ import {
   getAdminInventorySummary,
   getAdminProviders,
   getCatalog,
+  getFooterContent,
+  getHomepageContent,
   getJobsList,
   getOrderForUser,
   getOrdersForUser,
@@ -71,6 +75,8 @@ import {
   settlePaymentIntentById,
   syncEnabledProviders,
   syncProvider,
+  upsertFooterContent,
+  upsertHomepageContent,
   updateAdminCategory,
   updateAdminInventoryItem,
   upsertAdminProviderConfig
@@ -157,6 +163,14 @@ app.get("/api/products/:slug", async (req, res) => {
   }
 
   res.json(product);
+});
+
+app.get("/api/content/homepage", async (_req, res) => {
+  res.json(await getHomepageContent());
+});
+
+app.get("/api/content/footer", async (_req, res) => {
+  res.json(await getFooterContent());
 });
 
 app.post("/api/auth/register", async (req, res) => {
@@ -419,6 +433,24 @@ app.get("/api/admin/dashboard", requireAdmin, async (_req, res) => {
 
 app.get("/api/admin/categories", requireAdmin, async (_req, res) => {
   res.json(await getAdminCategories());
+});
+
+app.get("/api/admin/content/homepage", requireAdmin, async (_req, res) => {
+  res.json(await getHomepageContent());
+});
+
+app.put("/api/admin/content/homepage", requireAdmin, async (req, res) => {
+  const input = homepageContentSchema.parse(req.body);
+  res.json(await upsertHomepageContent(input, req.authUser!.id));
+});
+
+app.get("/api/admin/content/footer", requireAdmin, async (_req, res) => {
+  res.json(await getFooterContent());
+});
+
+app.put("/api/admin/content/footer", requireAdmin, async (req, res) => {
+  const input = footerContentSchema.parse(req.body);
+  res.json(await upsertFooterContent(input, req.authUser!.id));
 });
 
 app.post("/api/admin/categories", requireAdmin, async (req, res) => {

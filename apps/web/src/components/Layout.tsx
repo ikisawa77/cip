@@ -1,8 +1,23 @@
-import { ArrowUp, Coins, House, LayoutDashboard, Package, ShieldCheck, Tags, UserRound, WalletCards } from "lucide-react";
+import { footerContentDefaults, type FooterContent } from "@cip/shared";
+import { useQuery } from "@tanstack/react-query";
+import {
+  ArrowRight,
+  ArrowUp,
+  Coins,
+  House,
+  LayoutDashboard,
+  Package,
+  ShieldCheck,
+  Sparkles,
+  Tags,
+  UserRound,
+  WalletCards
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { useAuth } from "../auth";
+import { apiFetch } from "../lib/api";
 
 type HeaderItem = {
   to: string;
@@ -20,12 +35,37 @@ const headerItems: HeaderItem[] = [
   { to: "/admin", label: "หลังบ้าน", icon: LayoutDashboard, requiresAdmin: true }
 ];
 
+function renderFooterLink(link: FooterContent["quickLinks"][number]) {
+  const isAnchor = link.href.includes("#");
+
+  if (isAnchor) {
+    return (
+      <a className="footer-link-item" href={link.href} key={`${link.label}-${link.href}`}>
+        <span>{link.label}</span>
+        <ArrowRight size={15} />
+      </a>
+    );
+  }
+
+  return (
+    <Link className="footer-link-item" key={`${link.label}-${link.href}`} to={link.href}>
+      <span>{link.label}</span>
+      <ArrowRight size={15} />
+    </Link>
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, openAuth, logout } = useAuth();
   const location = useLocation();
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const visibleHeaderItems = headerItems.filter((item) => !item.requiresAdmin || user?.role === "admin");
+  const footerContentQuery = useQuery({
+    queryKey: ["content", "footer"],
+    queryFn: () => apiFetch<FooterContent>("/api/content/footer")
+  });
+  const footerContent = footerContentQuery.data ?? footerContentDefaults;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -130,13 +170,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <span className="back-to-top__icon">
           <svg aria-hidden="true" className="back-to-top__progress" viewBox="0 0 32 32">
             <circle className="back-to-top__progress-track" cx="16" cy="16" r="12" />
-            <circle
-              className="back-to-top__progress-value"
-              cx="16"
-              cy="16"
-              r="12"
-              style={{ strokeDashoffset: progressOffset }}
-            />
+            <circle className="back-to-top__progress-value" cx="16" cy="16" r="12" style={{ strokeDashoffset: progressOffset }} />
           </svg>
           <ArrowUp size={16} />
         </span>
@@ -148,19 +182,69 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </span>
       </button>
 
-      <footer className="panel-soft mx-auto mt-14 flex max-w-7xl flex-wrap items-center gap-3 rounded-[2rem] px-5 py-4 text-sm muted-text">
-        <span className="inline-flex items-center gap-2">
-          <Package size={16} /> Digital goods พร้อมส่ง
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <Coins size={16} /> Wallet และ PromptPay
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <ShieldCheck size={16} /> Auth และ security center
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <LayoutDashboard size={16} /> หลังบ้านภาษาไทยครบ flow
-        </span>
+      <footer className="footer-shell mx-auto mt-14 max-w-7xl overflow-hidden rounded-[2.4rem]">
+        <div className="footer-shell__glow" />
+        <div className="footer-shell__grid" />
+        <div className="footer-shell__content">
+          <div className="footer-hero">
+            <div className="footer-badge">
+              <Sparkles size={14} />
+              {footerContent.badge}
+            </div>
+            <h2 className="footer-title">{footerContent.headline}</h2>
+            <p className="footer-description">{footerContent.description}</p>
+            <div className="footer-statuses">
+              {footerContent.statusPills.map((pill) => (
+                <span className="footer-status-pill" key={pill}>
+                  {pill}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="footer-links-grid">
+            <div className="footer-link-panel">
+              <div className="footer-link-title">
+                <Package size={16} />
+                {footerContent.quickLinksTitle}
+              </div>
+              <div className="footer-link-list">{footerContent.quickLinks.map((link) => renderFooterLink(link))}</div>
+            </div>
+
+            <div className="footer-link-panel">
+              <div className="footer-link-title">
+                <ShieldCheck size={16} />
+                {footerContent.supportLinksTitle}
+              </div>
+              <div className="footer-link-list">{footerContent.supportLinks.map((link) => renderFooterLink(link))}</div>
+            </div>
+
+            <div className="footer-contact-panel">
+              <div className="footer-link-title">
+                <Coins size={16} />
+                {footerContent.contactTitle}
+              </div>
+              <p className="footer-contact-line">{footerContent.contactLine}</p>
+              <p className="footer-contact-subline">{footerContent.contactSubline}</p>
+              <div className="footer-contact-actions">
+                <Link className="footer-mini-action" to="/topup">
+                  เติมเงิน
+                </Link>
+                <Link className="footer-mini-action" to="/">
+                  กลับหน้าหลัก
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          <div className="footer-bottom-bar">
+            <div className="footer-bottom-copy">{footerContent.copyright}</div>
+            <div className="footer-bottom-note">
+              <LayoutDashboard size={14} />
+              {user?.role === "admin" ? "แก้ไข footer ได้จาก /admin" : "Footer นี้ดึงข้อความจากระบบหลังบ้าน"}
+            </div>
+          </div>
+        </div>
       </footer>
     </div>
   );
