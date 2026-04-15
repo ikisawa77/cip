@@ -1,9 +1,15 @@
+$ErrorActionPreference = "Stop"
+
 $root = Split-Path -Parent $PSScriptRoot
 $envPath = Join-Path $root ".env.local"
 $examplePath = Join-Path $root ".env.example"
 
 if (-not (Test-Path $envPath)) {
-  Copy-Item $examplePath $envPath
+  if (-not (Test-Path $examplePath)) {
+    throw ".env.example not found at $examplePath"
+  }
+
+  Copy-Item $examplePath $envPath -ErrorAction Stop
   Write-Host ".env.local created from .env.example"
 } else {
   Write-Host ".env.local already exists"
