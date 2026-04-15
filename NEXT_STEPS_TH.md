@@ -1,13 +1,9 @@
 # งานถัดไป
 
-1. สร้าง `.env.local` จาก `.env.example` และใส่ค่า MariaDB จริง
-2. รัน `corepack pnpm db:push`
-3. รัน `corepack pnpm db:seed`
-4. รัน `corepack pnpm dev:api` และ `corepack pnpm dev:web`
-5. ทดสอบ flow บน localhost ด้วยบัญชี admin/demo
-6. เติม adapter production ของ `Wepay`, `24Payseller`, `Peamsub24hr`, `K-BIZ`, `TrueMoney`, `RDCW` ด้วย payload จริง
-7. เพิ่ม social login LINE / Google / Discord
-8. ทำ admin CRUD ให้ลึกขึ้นสำหรับ random pools, wallet adjustments, provider secrets และ webhook replay
-9. เพิ่ม local database bootstrap แบบ one-click ถ้ามี MariaDB client ในเครื่อง
-10. ปรับ responsive และ polish หน้าเว็บเพิ่มเติมหลังได้ข้อมูลจริงจาก provider
-11. commit + push พร้อมอัปเดตไฟล์ handoff ภาษาไทยอีกครั้ง
+1. เปิดทดสอบหน้าเว็บบน `http://127.0.0.1:5173`
+2. ล็อกอินด้วยบัญชี demo และไล่ flow ซื้อสินค้า / ชำระเงินจำลอง / ดู order detail
+3. ทดสอบหน้า admin ด้วยบัญชีแอดมิน รวม inventory import และ queue jobs
+4. เก็บ polish เพิ่มในหน้า `ProductPage` ให้เข้าธีมใหม่เต็มชุด
+5. เช็กข้อความภาษาไทยที่ยังเพี้ยนในหน้าอื่น ๆ ถ้ายังมีหลุด
+6. เริ่มเชื่อม provider จริงตัวแรก เช่น `Wepay` หรือ `24Payseller`
+7. ถ้าต้องย้ายเครื่อง ให้ pull ล่าสุดแล้วใช้ `first-time-setup.bat` หรือ `run-localhost.bat` ได้ทันที

@@ -47,18 +47,24 @@ echo.
 pause
 
 echo.
-echo [3/5] Pushing database schema...
+echo [3/6] Ensuring local MariaDB is ready...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ensure-mariadb-local.ps1"
+if errorlevel 1 goto :dbfail
+
+echo.
+echo [4/6] Pushing database schema...
 call "%PNPM_CMD%" db:push
 if errorlevel 1 goto :dbfail
 
 echo.
-echo [4/5] Seeding demo data...
+echo [5/6] Seeding demo data...
 call "%PNPM_CMD%" db:seed
 if errorlevel 1 goto :dbfail
 
 echo.
-echo [5/5] Setup complete.
+echo [6/6] Setup complete.
 echo You can now run:
+- start-db-local.bat
 echo - run-localhost.bat
 echo - or double-click run-api-local.bat / run-web-local.bat
 echo.

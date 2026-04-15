@@ -18,6 +18,15 @@ if not exist "node_modules" (
   exit /b 1
 )
 
+echo Ensuring MariaDB local database is ready...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ensure-mariadb-local.ps1"
+if errorlevel 1 (
+  echo.
+  echo API could not start because MariaDB local is not ready.
+  pause
+  exit /b 1
+)
+
 echo Starting CIP API on http://localhost:3001
 call "%PNPM_CMD%" dev:api
 

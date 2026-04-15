@@ -23,12 +23,11 @@ if ($mysqlCommand) {
   Write-Host 'mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS cip_local CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"'
 } else {
   Write-Host "mysql command not found in PATH"
-  Write-Host "Create the MariaDB database manually or update DB_NAME in .env.local"
+  Write-Host "first-time-setup.bat and run-localhost.bat can still start local MariaDB automatically if MariaDB Server is installed."
 }
 
 Write-Host ""
 Write-Host "Next steps:"
-Write-Host "1. Update DB_HOST / DB_USER / DB_PASSWORD / DB_NAME in .env.local"
-Write-Host "2. Run corepack pnpm db:push"
-Write-Host "3. Run corepack pnpm db:seed"
-Write-Host "4. Run corepack pnpm dev"
+Write-Host "1. Review DB_HOST / DB_USER / DB_PASSWORD / DB_NAME in .env.local"
+Write-Host "2. Run first-time-setup.bat"
+Write-Host "3. Run run-localhost.bat"

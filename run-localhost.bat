@@ -24,6 +24,14 @@ if not exist ".env.local" if not exist ".env" (
   echo.
 )
 
+echo Ensuring MariaDB local database is ready...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ensure-mariadb-local.ps1"
+if errorlevel 1 (
+  echo [ERROR] MariaDB local is not ready.
+  pause
+  exit /b 1
+)
+
 echo Opening API and Web dev servers...
 start "CIP API" cmd /k call "%~dp0run-api-local.bat"
 start "CIP WEB" cmd /k call "%~dp0run-web-local.bat"
