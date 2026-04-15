@@ -1,3 +1,4 @@
+import { LockKeyhole, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -34,6 +35,12 @@ export function ProtectedRoute({
   if (!user) {
     return (
       <div className="panel rounded-[2rem] p-6">
+        <div className="section-head">
+          <div className="section-head__icon">
+            <LockKeyhole size={18} />
+          </div>
+          <div className="section-label">Protected Area</div>
+        </div>
         <p className="text-lg font-semibold text-slate-950">ต้องเข้าสู่ระบบก่อน</p>
         <p className="mt-2 text-sm muted-text">
           เราเปิดหน้าล็อกอินให้แล้ว ถ้าปิดหน้าต่างไป คุณสามารถกดเปิดใหม่ได้จากปุ่มด้านล่าง หรือกลับไปหน้าแรกก่อนได้
@@ -53,6 +60,12 @@ export function ProtectedRoute({
   if (role && user.role !== role) {
     return (
       <div className="panel rounded-[2rem] p-6">
+        <div className="section-head">
+          <div className="section-head__icon">
+            <ShieldAlert size={18} />
+          </div>
+          <div className="section-label">Permission Check</div>
+        </div>
         <p className="text-lg font-semibold text-slate-950">บัญชีนี้ยังไม่มีสิทธิ์เข้าถึงหน้านี้</p>
         <p className="mt-2 text-sm muted-text">
           หากต้องการจัดการคำสั่งซื้อหรือ wallet ให้กลับไปที่หน้าบัญชี ส่วนหลังบ้านจะเปิดเฉพาะแอดมินเท่านั้น

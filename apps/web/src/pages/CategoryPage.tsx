@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, Boxes, Filter, Search, Tags } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -79,11 +79,20 @@ export function CategoryPage() {
       <section className="panel rounded-[2.75rem] overflow-hidden px-6 py-8 md:px-10 md:py-10">
         <div className="grid gap-8 lg:grid-cols-[1fr_0.9fr] lg:items-end">
           <div>
-            <div className="section-label">Category Detail</div>
+            <div className="section-head">
+              <div className="section-head__icon">
+                <Tags size={18} />
+              </div>
+              <div className="section-label">Category Detail</div>
+            </div>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 md:text-5xl">{category.name}</h1>
             <p className="mt-4 max-w-2xl text-base leading-8 muted-text">
               {category.description ?? "หมวดนี้ถูกจัดไว้สำหรับรวมสินค้าที่เกี่ยวข้องกัน เพื่อให้ลูกค้าเลือกและตัดสินใจได้ง่ายขึ้น"}
             </p>
+            <div className="mt-5 icon-chip text-sm">
+              <Boxes className="icon-chip__icon" size={15} />
+              {visibleProducts.length} รายการในหมวดนี้
+            </div>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link className="secondary-button rounded-full px-5 py-3 text-sm font-medium" to="/">
                 <ArrowLeft size={16} /> กลับทุกหมวด
@@ -95,7 +104,12 @@ export function CategoryPage() {
           </div>
 
           <div className="panel-soft rounded-[2rem] p-5">
-            <div className="section-label">Filter In Category</div>
+            <div className="section-head">
+              <div className="section-head__icon">
+                <Filter size={18} />
+              </div>
+              <div className="section-label">Filter In Category</div>
+            </div>
             <label className="relative mt-4 block">
               <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
@@ -128,7 +142,10 @@ export function CategoryPage() {
             <div className="space-y-4 p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="text-xs uppercase tracking-[0.28em] text-[var(--brand)]">{product.type}</div>
+                  <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-[var(--brand)]">
+                    <Tags size={13} />
+                    {product.type}
+                  </div>
                   <h2 className="mt-2 text-2xl font-semibold text-slate-950">{product.name}</h2>
                 </div>
                 {product.badge ? <span className="rounded-full bg-[var(--brand-soft)] px-3 py-1 text-xs font-medium text-[var(--brand)]">{product.badge}</span> : null}

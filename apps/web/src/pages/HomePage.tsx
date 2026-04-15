@@ -1,6 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, Search, ShieldCheck, Sparkles, TimerReset, Wallet } from "lucide-react";
+import {
+  ArrowRight,
+  BadgeDollarSign,
+  Boxes,
+  Gamepad2,
+  Layers3,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Tags,
+  TimerReset,
+  Wallet
+} from "lucide-react";
 import { startTransition, useDeferredValue, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
@@ -33,14 +45,17 @@ function formatMoney(cents: number) {
 
 const supportPoints = [
   {
+    icon: Layers3,
     title: "เมนูหมวดหมู่ช่วยให้เลือกซื้อเร็วขึ้น",
     body: "แยกสินค้าเป็นหมวดชัดเจนตั้งแต่หน้าแรก ลูกค้าสแกนเจอหมวดที่ต้องการก่อน แล้วค่อยลงลึกไปที่สินค้ารายชิ้นได้ทันที"
   },
   {
+    icon: Wallet,
     title: "เติมเงินแยกหน้าเพื่อใช้งานง่ายขึ้น",
     body: "แยก flow เติมเงินออกจากหน้า account ให้ใช้งานสะดวกขึ้น ทั้งลูกค้าใหม่และลูกค้าประจำเข้าถึง PromptPay, TrueMoney และ K-Biz match ได้เร็ว"
   },
   {
+    icon: Boxes,
     title: "โครงร้านพร้อมต่อยอดงานขายจริง",
     body: "ยังคงมี inventory, provider config, queue jobs และเอกสาร handoff ภาษาไทยครบสำหรับย้ายเครื่องหรือพัฒนาต่อ"
   }
@@ -51,6 +66,18 @@ const trustPoints = [
   { icon: Wallet, label: "Wallet / PromptPay / Top-up" },
   { icon: TimerReset, label: "พร้อมทดสอบ localhost" }
 ];
+
+function getCategoryIcon(slug: string) {
+  if (slug.includes("wallet") || slug.includes("topup")) {
+    return Wallet;
+  }
+
+  if (slug.includes("code") || slug.includes("key")) {
+    return BadgeDollarSign;
+  }
+
+  return Gamepad2;
+}
 
 export function HomePage() {
   const [search, setSearch] = useState("");
@@ -158,7 +185,10 @@ export function HomePage() {
       </section>
 
       <section className="grid gap-5 lg:grid-cols-3">
-        {supportPoints.map((item, index) => (
+        {supportPoints.map((item, index) => {
+          const Icon = item.icon;
+
+          return (
           <motion.article
             className="panel-soft rounded-[2rem] px-5 py-6"
             initial={{ opacity: 0, y: 24 }}
@@ -167,11 +197,17 @@ export function HomePage() {
             whileInView={{ opacity: 1, y: 0 }}
             key={item.title}
           >
-            <div className="section-label">Support {String(index + 1).padStart(2, "0")}</div>
+            <div className="section-head">
+              <div className="section-head__icon">
+                <Icon size={18} />
+              </div>
+              <div className="section-label">Support {String(index + 1).padStart(2, "0")}</div>
+            </div>
             <h2 className="mt-3 text-2xl font-semibold text-slate-950">{item.title}</h2>
             <p className="mt-3 text-sm leading-7 muted-text">{item.body}</p>
           </motion.article>
-        ))}
+          );
+        })}
       </section>
 
       <section className="panel rounded-[2rem] px-5 py-5" id="store-categories">
@@ -235,10 +271,21 @@ export function HomePage() {
               key={category.id}
             >
               <div className="panel-soft rounded-[2rem] p-5">
-                <div className="section-label">Category</div>
+                <div className="section-head">
+                  <div className="section-head__icon">
+                    {(() => {
+                      const Icon = getCategoryIcon(category.slug);
+                      return <Icon size={18} />;
+                    })()}
+                  </div>
+                  <div className="section-label">Category</div>
+                </div>
                 <h3 className="mt-3 text-3xl font-semibold text-slate-950">{category.name}</h3>
                 <p className="mt-3 text-sm leading-7 muted-text">{category.description ?? "หมวดนี้พร้อมต่อยอด flow สินค้าและ checkout ได้ทันที"}</p>
-                <div className="mt-8 text-sm muted-text">{category.products.length} รายการที่แสดง</div>
+                <div className="mt-8 icon-chip text-sm">
+                  <Boxes className="icon-chip__icon" size={15} />
+                  {category.products.length} รายการที่แสดง
+                </div>
                 <div className="mt-5 flex flex-wrap gap-4">
                   <Link className="inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]" to={`/category/${category.slug}`}>
                     เปิดหน้าหมวดนี้ <ArrowRight size={16} />
@@ -268,7 +315,10 @@ export function HomePage() {
                       <div className="space-y-4 p-5">
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <div className="text-xs uppercase tracking-[0.28em] text-[var(--brand)]">{product.type}</div>
+                            <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-[var(--brand)]">
+                              <Tags size={13} />
+                              {product.type}
+                            </div>
                             <h4 className="mt-2 text-xl font-semibold text-slate-950">{product.name}</h4>
                           </div>
                           {product.badge ? (

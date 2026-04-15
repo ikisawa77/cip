@@ -1,4 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Boxes,
+  FolderCog,
+  KeyRound,
+  LayoutDashboard,
+  PackageCheck,
+  PlugZap,
+  ReceiptText,
+  RefreshCcw,
+  ScanSearch,
+  ShieldCheck,
+  Tags,
+  UserRound,
+  Workflow
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "../auth";
@@ -114,6 +129,22 @@ function formatDate(value: string | null) {
 function getCategoryBadgeText(category: CategoryRow) {
   return `${category.totalProducts} สินค้า`;
 }
+
+const adminNavItems = [
+  { label: "ภาพรวม", href: "#admin-overview", icon: LayoutDashboard },
+  { label: "หมวดหมู่สินค้า", href: "#admin-categories", icon: Tags },
+  { label: "คลังโค้ด", href: "#admin-inventory", icon: KeyRound },
+  { label: "Provider", href: "#admin-providers", icon: PlugZap },
+  { label: "ออเดอร์ล่าสุด", href: "#admin-orders", icon: ReceiptText },
+  { label: "คิวงาน", href: "#admin-jobs", icon: Workflow }
+] as const;
+
+const overviewCardMeta = [
+  { label: "จำนวนออเดอร์", icon: ReceiptText },
+  { label: "รายได้รวม", icon: PackageCheck },
+  { label: "ผู้ใช้งาน", icon: UserRound },
+  { label: "งานค้างในคิว", icon: Workflow }
+] as const;
 
 export function AdminPage() {
   const { user, openAuth } = useAuth();
@@ -446,6 +477,12 @@ export function AdminPage() {
   if (!user) {
     return (
       <div className="panel rounded-[2rem] p-6">
+        <div className="section-head">
+          <div className="section-head__icon">
+            <ShieldCheck size={18} />
+          </div>
+          <div className="section-label">Admin Access</div>
+        </div>
         <p className="text-lg font-semibold text-slate-950">เข้าสู่ระบบแอดมินก่อน</p>
         <button className="primary-button mt-4 rounded-full px-4 py-2 text-sm" onClick={() => openAuth("login")}>
           Login
@@ -455,7 +492,17 @@ export function AdminPage() {
   }
 
   if (user.role !== "admin") {
-    return <div className="panel rounded-[2rem] p-6">บัญชีนี้ยังไม่ใช่ผู้ดูแลระบบ</div>;
+    return (
+      <div className="panel rounded-[2rem] p-6">
+        <div className="section-head">
+          <div className="section-head__icon">
+            <LayoutDashboard size={18} />
+          </div>
+          <div className="section-label">Admin Access</div>
+        </div>
+        <p className="mt-3 text-lg font-semibold text-slate-950">บัญชีนี้ยังไม่ใช่ผู้ดูแลระบบ</p>
+      </div>
+    );
   }
 
   return (
@@ -463,27 +510,27 @@ export function AdminPage() {
       <section className="panel rounded-[2.5rem] p-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="section-label">Admin Command Center</p>
+            <div className="section-head">
+              <div className="section-head__icon">
+                <LayoutDashboard size={18} />
+              </div>
+              <p className="section-label">Admin Command Center</p>
+            </div>
             <h1 className="mt-2 text-3xl font-semibold text-slate-950">จัดการหมวดหมู่และคลังโค้ดจากหน้าเดียว</h1>
             <p className="mt-3 max-w-3xl text-sm muted-text">
               เพิ่มเมนูภายในหน้าแอดมินเพื่อแยกงานชัดเจน ดูภาพรวมยอดขาย จัดการหมวดหมู่สินค้า และดูแล code / link / account stock ได้ครบใน workflow เดียว
             </p>
           </div>
-          <div className="rounded-[1.75rem] border border-[var(--line)] bg-white/90 px-4 py-3 text-sm text-slate-700">
+          <div className="icon-chip text-sm">
+            <ShieldCheck className="icon-chip__icon" size={15} />
             โหมดใช้งาน: <span className="font-semibold text-slate-950">ผู้ดูแลระบบ</span>
           </div>
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">
-          {[
-            ["ภาพรวม", "#admin-overview"],
-            ["หมวดหมู่สินค้า", "#admin-categories"],
-            ["คลังโค้ด", "#admin-inventory"],
-            ["Provider", "#admin-providers"],
-            ["ออเดอร์ล่าสุด", "#admin-orders"],
-            ["คิวงาน", "#admin-jobs"]
-          ].map(([label, href]) => (
-            <a className="secondary-button rounded-full px-4 py-2 text-sm" href={href} key={href}>
+          {adminNavItems.map(({ label, href, icon: Icon }) => (
+            <a className="secondary-button inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm" href={href} key={href}>
+              <Icon size={15} />
               {label}
             </a>
           ))}
@@ -492,21 +539,36 @@ export function AdminPage() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" id="admin-overview">
         {[
-          ["จำนวนออเดอร์", String(dashboardQuery.data?.ordersCount ?? 0)],
-          ["รายได้รวม", formatMoney(dashboardQuery.data?.revenueCents ?? 0)],
-          ["ผู้ใช้งาน", String(dashboardQuery.data?.usersCount ?? 0)],
-          ["งานค้างในคิว", String(dashboardQuery.data?.pendingJobs ?? 0)]
-        ].map(([label, value]) => (
-          <div className="panel rounded-[2rem] p-5" key={label}>
-            <div className="section-label">{label}</div>
-            <div className="mt-3 text-3xl font-semibold text-slate-950">{value}</div>
-          </div>
-        ))}
+          String(dashboardQuery.data?.ordersCount ?? 0),
+          formatMoney(dashboardQuery.data?.revenueCents ?? 0),
+          String(dashboardQuery.data?.usersCount ?? 0),
+          String(dashboardQuery.data?.pendingJobs ?? 0)
+        ].map((value, index) => {
+          const item = overviewCardMeta[index];
+          const Icon = item.icon;
+
+          return (
+            <div className="panel rounded-[2rem] p-5" key={item.label}>
+              <div className="section-head">
+                <div className="section-head__icon">
+                  <Icon size={18} />
+                </div>
+                <div className="section-label">{item.label}</div>
+              </div>
+              <div className="mt-3 text-3xl font-semibold text-slate-950">{value}</div>
+            </div>
+          );
+        })}
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]" id="admin-categories">
         <section className="panel rounded-[2.5rem] p-6">
-          <p className="section-label">Category Manager</p>
+          <div className="section-head">
+            <div className="section-head__icon">
+              <FolderCog size={18} />
+            </div>
+            <p className="section-label">Category Manager</p>
+          </div>
           <h2 className="mt-2 text-2xl font-semibold text-slate-950">เมนูหมวดหมู่สำหรับแยกการขายให้ชัดเจน</h2>
           <p className="mt-2 text-sm muted-text">
             ใช้ส่วนนี้สร้างหมวดสินค้าหลัก เช่น เติมเกม, code, ลิงก์ดาวน์โหลด, ไอดีเกม หรือพรีเมียมแอป เพื่อแยกสินค้าในร้านให้เข้าใจง่าย
@@ -565,7 +627,12 @@ export function AdminPage() {
         <section className="panel rounded-[2.5rem] p-6">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="section-label">Category List</p>
+              <div className="section-head">
+                <div className="section-head__icon">
+                  <Tags size={18} />
+                </div>
+                <p className="section-label">Category List</p>
+              </div>
               <h2 className="mt-2 text-2xl font-semibold text-slate-950">หมวดหมู่ที่เปิดใช้งานในร้าน</h2>
             </div>
             <div className="rounded-full border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-slate-600">
@@ -579,6 +646,9 @@ export function AdminPage() {
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
+                      <span className="section-head__icon h-10 w-10 shrink-0">
+                        <Tags size={16} />
+                      </span>
                       <h3 className="text-base font-semibold text-slate-950">{category.name}</h3>
                       <span className="rounded-full bg-[var(--surface-2)] px-3 py-1 text-xs font-medium text-slate-700">{getCategoryBadgeText(category)}</span>
                     </div>
@@ -627,7 +697,12 @@ export function AdminPage() {
       <section className="panel rounded-[2.5rem] p-6" id="admin-inventory">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="section-label">Inventory Control</p>
+            <div className="section-head">
+              <div className="section-head__icon">
+                <KeyRound size={18} />
+              </div>
+              <p className="section-label">Inventory Control</p>
+            </div>
             <h2 className="mt-2 text-2xl font-semibold text-slate-950">เพิ่ม แก้ไข ลบ code ได้จากหลังบ้าน</h2>
             <p className="mt-2 max-w-3xl text-sm muted-text">
               รองรับการขายแบบ code, download link, account และรายการทั่วไป สามารถกรองตามหมวดหมู่และสินค้าเพื่อดู stock ได้ชัดเจน
@@ -656,7 +731,12 @@ export function AdminPage() {
         <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <div className="space-y-6">
             <div className="panel-soft rounded-[2rem] p-5">
-              <p className="section-label">เพิ่มหรือแก้ไขรายชิ้น</p>
+              <div className="section-head">
+                <div className="section-head__icon">
+                  <ScanSearch size={18} />
+                </div>
+                <p className="section-label">เพิ่มหรือแก้ไขรายชิ้น</p>
+              </div>
               <div className="mt-4 space-y-3">
                 <select
                   className="input-field"
@@ -718,7 +798,12 @@ export function AdminPage() {
             </div>
 
             <div className="panel-soft rounded-[2rem] p-5">
-              <p className="section-label">นำเข้าหลายรายการ</p>
+              <div className="section-head">
+                <div className="section-head__icon">
+                  <Boxes size={18} />
+                </div>
+                <p className="section-label">นำเข้าหลายรายการ</p>
+              </div>
               <div className="mt-4 space-y-3">
                 <select className="input-field" onChange={(event) => setInventoryBulkProductId(event.target.value)} value={inventoryBulkProductId}>
                   <option value="">เลือกสินค้าที่จะนำเข้า</option>
@@ -755,7 +840,10 @@ export function AdminPage() {
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {inventoryQuery.data?.map((item) => (
                 <div className="panel-soft rounded-[1.5rem] px-4 py-4" key={item.id}>
-                  <div className="text-sm font-medium text-slate-900">{item.name}</div>
+                  <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-900">
+                    <PackageCheck size={15} className="text-[var(--brand)]" />
+                    {item.name}
+                  </div>
                   <div className="mt-1 text-xs uppercase tracking-[0.25em] text-slate-400">{item.type}</div>
                   <div className="mt-3 text-sm muted-text">คงเหลือ: {item.availableStock}</div>
                   <div className="text-sm muted-text">ถูกจ่ายแล้ว: {item.allocatedStock}</div>
@@ -769,6 +857,9 @@ export function AdminPage() {
                   <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
+                        <span className="section-head__icon h-10 w-10 shrink-0">
+                          <KeyRound size={16} />
+                        </span>
                         <div className="text-sm font-semibold text-slate-950">{item.maskedLabel}</div>
                         <span className="rounded-full bg-[var(--surface-2)] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-600">{item.kind}</span>
                         <span
@@ -831,7 +922,12 @@ export function AdminPage() {
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]" id="admin-providers">
         <section className="panel rounded-[2.5rem] p-6">
-          <p className="section-label">Provider Config</p>
+          <div className="section-head">
+            <div className="section-head__icon">
+              <PlugZap size={18} />
+            </div>
+            <p className="section-label">Provider Config</p>
+          </div>
           <h2 className="mt-2 text-2xl font-semibold text-slate-950">สถานะผู้ให้บริการ API</h2>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             {providerQuery.data?.map((provider) => {
@@ -888,14 +984,22 @@ export function AdminPage() {
         </section>
 
         <section className="panel rounded-[2.5rem] p-6" id="admin-orders">
-          <p className="section-label">Recent Orders</p>
+          <div className="section-head">
+            <div className="section-head__icon">
+              <ReceiptText size={18} />
+            </div>
+            <p className="section-label">Recent Orders</p>
+          </div>
           <h2 className="mt-2 text-2xl font-semibold text-slate-950">ออเดอร์ล่าสุด</h2>
           <div className="mt-4 space-y-3">
             {orderQuery.data?.slice(0, 8).map((order) => (
               <div className="panel-soft rounded-[1.5rem] px-4 py-4" key={order.id}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-slate-900">{order.id}</div>
+                    <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-900">
+                      <ReceiptText size={15} className="text-[var(--brand)]" />
+                      {order.id}
+                    </div>
                     <div className="mt-1 text-sm muted-text">{formatDate(order.createdAt)}</div>
                     {order.notes ? <div className="mt-2 text-sm muted-text">{order.notes}</div> : null}
                   </div>
@@ -913,7 +1017,12 @@ export function AdminPage() {
       <section className="panel rounded-[2.5rem] p-6" id="admin-jobs">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="section-label">Queue Jobs</p>
+            <div className="section-head">
+              <div className="section-head__icon">
+                <Workflow size={18} />
+              </div>
+              <p className="section-label">Queue Jobs</p>
+            </div>
             <h2 className="mt-2 text-2xl font-semibold text-slate-950">งานค้างและงานที่พร้อม requeue</h2>
           </div>
           <div className="rounded-full border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-slate-600">ทั้งหมด {jobsQuery.data?.length ?? 0} งาน</div>
@@ -923,7 +1032,10 @@ export function AdminPage() {
             <div className="panel-soft rounded-[1.5rem] px-4 py-4" key={job.id}>
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-slate-900">{job.kind}</div>
+                  <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-900">
+                    <RefreshCcw size={15} className="text-[var(--brand)]" />
+                    {job.kind}
+                  </div>
                   <div className="mt-1 text-xs uppercase tracking-[0.25em] text-slate-400">{job.status}</div>
                   <div className="mt-2 text-xs text-slate-500">อัปเดตล่าสุด {formatDate(job.updatedAt)}</div>
                   <pre className="mt-3 overflow-auto rounded-2xl bg-[var(--text)] px-4 py-3 text-xs text-slate-100">{job.payloadJson}</pre>

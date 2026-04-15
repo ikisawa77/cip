@@ -1,6 +1,6 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { AlertCircle, ArrowLeft, Coins, ShoppingBag } from "lucide-react";
+import { AlertCircle, ArrowLeft, Coins, QrCode, ShoppingBag, Tags, WalletCards } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import { useAuth } from "../auth";
@@ -41,6 +41,7 @@ function formatMoney(cents: number) {
 export function ProductPage() {
   const { slug = "" } = useParams();
   const { user, openAuth } = useAuth();
+  const queryClient = useQueryClient();
   const catalogQuery = useQuery({
     queryKey: ["catalog"],
     queryFn: () => apiFetch<CatalogCategory[]>("/api/catalog")
@@ -59,7 +60,15 @@ export function ProductPage() {
           paymentMethod,
           formInput: {}
         })
-      })
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["auth", "me"] }),
+        queryClient.invalidateQueries({ queryKey: ["wallet", "history"] }),
+        queryClient.invalidateQueries({ queryKey: ["orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["product", slug] })
+      ]);
+    }
   });
 
   if (productQuery.isLoading) {
@@ -99,10 +108,16 @@ export function ProductPage() {
         <motion.div className="panel rounded-[2.5rem] p-6" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="section-label">{product.type}</p>
+              <div className="section-head">
+                <div className="section-head__icon">
+                  <ShoppingBag size={18} />
+                </div>
+                <p className="section-label">{product.type}</p>
+              </div>
               <h1 className="mt-2 text-3xl font-semibold text-slate-950">{product.name}</h1>
               {currentCategory ? (
-                <Link className="mt-3 inline-flex text-sm font-medium text-[var(--brand)]" to={`/category/${currentCategory.slug}`}>
+                <Link className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]" to={`/category/${currentCategory.slug}`}>
+                  <Tags size={15} />
                   หมวด: {currentCategory.name}
                 </Link>
               ) : null}
@@ -129,7 +144,7 @@ export function ProductPage() {
 
           <div className="mt-6 grid gap-3 md:grid-cols-2">
             <button
-              className="primary-button rounded-full px-5 py-3 text-sm font-medium"
+              className="primary-button inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-medium"
               onClick={() => {
                 if (!user) {
                   openAuth("login", `/product/${slug}`);
@@ -139,10 +154,11 @@ export function ProductPage() {
                 void orderMutation.mutateAsync("wallet");
               }}
             >
+              <WalletCards size={16} />
               ซื้อด้วย Wallet
             </button>
             <button
-              className="secondary-button rounded-full px-5 py-3 text-sm font-medium"
+              className="secondary-button inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-medium"
               onClick={() => {
                 if (!user) {
                   openAuth("login", `/product/${slug}`);
@@ -152,6 +168,7 @@ export function ProductPage() {
                 void orderMutation.mutateAsync("promptpay_qr");
               }}
             >
+              <QrCode size={16} />
               ซื้อผ่าน PromptPay
             </button>
           </div>
@@ -160,6 +177,7 @@ export function ProductPage() {
             <div className="mt-4 rounded-[1.5rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
               สร้างออเดอร์แล้ว: {orderMutation.data.orderId}
               {orderMutation.data.paymentIntentId ? ` | Payment Intent: ${orderMutation.data.paymentIntentId}` : " | ชำระด้วย Wallet สำเร็จ"}
+              {!orderMutation.data.paymentIntentId ? " | ระบบรีเฟรชยอด Wallet ให้แล้ว" : ""}
             </div>
           ) : null}
           {orderMutation.error instanceof Error ? <div className="mt-4 rounded-[1.5rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{orderMutation.error.message}</div> : null}

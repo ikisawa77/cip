@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CreditCard, LockKeyhole, ShieldCheck, WalletCards } from "lucide-react";
+import { CreditCard, LockKeyhole, PackageSearch, ReceiptText, ShieldCheck, Sparkles, WalletCards } from "lucide-react";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
@@ -53,6 +53,21 @@ type AuthSessionRow = {
   expiresAt: string;
   current: boolean;
 };
+
+const authNotes = [
+  {
+    icon: ShieldCheck,
+    text: "ระบบใช้ session cookie แบบ httpOnly และ hash token ก่อนเก็บลงฐานข้อมูล"
+  },
+  {
+    icon: LockKeyhole,
+    text: "เมื่อรหัสผ่านถูกรีเซ็ตหรือเปลี่ยน ระบบจะล้าง session เดิมเพื่อกันการใช้งานต่อจากอุปกรณ์เก่า"
+  },
+  {
+    icon: Sparkles,
+    text: "หน้า account ดึงรายการ session จริงจาก backend เพื่อให้ผู้ใช้ปิด session ที่ไม่ต้องการได้"
+  }
+];
 
 function formatMoney(cents: number) {
   return new Intl.NumberFormat("th-TH", {
@@ -167,8 +182,13 @@ export function AccountPage() {
     <div className="space-y-6">
       <div className="grid gap-6 lg:grid-cols-[0.88fr_1.12fr]">
         <section className="panel rounded-[2.5rem] p-6">
-          <div className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-soft)] px-4 py-2 text-sm text-[var(--brand)]">
-            <WalletCards size={16} /> Wallet ของ {user.displayName}
+          <div className="section-head">
+            <div className="section-head__icon">
+              <WalletCards size={18} />
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-soft)] px-4 py-2 text-sm text-[var(--brand)]">
+              Wallet ของ {user.displayName}
+            </div>
           </div>
           <div className="mt-4 text-4xl font-semibold text-slate-950">{formatMoney(balanceQuery.data?.balanceCents ?? user.walletBalanceCents)}</div>
           <p className="mt-2 text-sm muted-text">ใช้สำหรับทดสอบการซื้อด้วย Wallet และติดตามผลลัพธ์หลังสร้าง payment intent บน localhost</p>
@@ -192,7 +212,12 @@ export function AccountPage() {
         <section className="panel rounded-[2.5rem] p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="section-label">Security Center</div>
+              <div className="section-head">
+                <div className="section-head__icon">
+                  <ShieldCheck size={18} />
+                </div>
+                <div className="section-label">Security Center</div>
+              </div>
               <h2 className="mt-2 text-2xl font-semibold text-slate-950">บัญชีและความปลอดภัย</h2>
               <p className="mt-2 text-sm muted-text">จัดการรหัสผ่าน ดู session ที่ยังเปิดอยู่ และตรวจสอบวันหมดอายุของ session ปัจจุบันได้จากหน้าเดียว</p>
             </div>
@@ -253,7 +278,12 @@ export function AccountPage() {
         <section className="panel rounded-[2.5rem] p-6">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <div className="section-label">Orders</div>
+              <div className="section-head">
+                <div className="section-head__icon">
+                  <PackageSearch size={18} />
+                </div>
+                <div className="section-label">Orders</div>
+              </div>
               <h2 className="mt-2 text-2xl font-semibold text-slate-950">ประวัติการสั่งซื้อ</h2>
             </div>
             <Link className="text-sm muted-text" to="/">
@@ -266,7 +296,10 @@ export function AccountPage() {
               <button className="panel-soft card-hover block w-full rounded-[1.5rem] px-4 py-4 text-left" key={order.id} onClick={() => setSearchParams({ order: order.id })} type="button">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-slate-900">{order.id}</div>
+                    <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-900">
+                      <ReceiptText size={15} className="text-[var(--brand)]" />
+                      {order.id}
+                    </div>
                     <div className="mt-1 text-sm muted-text">{new Date(order.createdAt).toLocaleString("th-TH")}</div>
                   </div>
                   <div className="text-right">
@@ -280,7 +313,12 @@ export function AccountPage() {
         </section>
 
         <section className="panel rounded-[2.5rem] p-6">
-          <div className="section-label">Order Detail</div>
+          <div className="section-head">
+            <div className="section-head__icon">
+              <ReceiptText size={18} />
+            </div>
+            <div className="section-label">Order Detail</div>
+          </div>
           <h2 className="mt-2 text-2xl font-semibold text-slate-950">รายละเอียดคำสั่งซื้อ</h2>
           {!selectedOrderId ? <p className="mt-4 text-sm muted-text">เลือกออเดอร์จากรายการด้านซ้ายเพื่อดูรายละเอียด</p> : null}
 
@@ -349,13 +387,12 @@ export function AccountPage() {
             <LockKeyhole size={16} /> Auth Notes
           </div>
           <div className="mt-4 grid gap-3">
-            {[
-              "ระบบใช้ session cookie แบบ httpOnly และ hash token ก่อนเก็บลงฐานข้อมูล",
-              "เมื่อรหัสผ่านถูกรีเซ็ตหรือเปลี่ยน ระบบจะล้าง session เดิมเพื่อกันการใช้งานต่อจากอุปกรณ์เก่า",
-              "หน้า account ดึงรายการ session จริงจาก backend เพื่อให้ผู้ใช้ปิด session ที่ไม่ต้องการได้"
-            ].map((item) => (
-              <div className="panel-soft rounded-[1.5rem] px-4 py-4 text-sm muted-text" key={item}>
-                {item}
+            {authNotes.map(({ icon: Icon, text }) => (
+              <div className="panel-soft rounded-[1.5rem] px-4 py-4 text-sm muted-text" key={text}>
+                <div className="info-row">
+                  <Icon className="info-row__icon" size={16} />
+                  <span>{text}</span>
+                </div>
               </div>
             ))}
           </div>

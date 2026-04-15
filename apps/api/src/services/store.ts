@@ -265,10 +265,73 @@ export async function createOrder(userId: string, input: CreateOrderInput) {
   const totalCents = product.priceCents * input.quantity;
   const timestamp = now();
 
+  if (input.paymentMethod === "wallet") {
+    await db.transaction(async (tx) => {
+      const [lockedUser] = await tx.select().from(users).where(eq(users.id, user.id)).limit(1);
+      if (!lockedUser) {
+        throw new Error("ไม่พบผู้ใช้");
+      }
+
+      if (lockedUser.walletBalanceCents < totalCents) {
+        throw new Error("ยอด Wallet ไม่เพียงพอ");
+      }
+
+      await tx.insert(orders).values({
+        id: orderId,
+        userId,
+        status: "paid",
+        subtotalCents: totalCents,
+        totalCents,
+        paymentMethod: input.paymentMethod,
+        notes: null,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      });
+
+      await tx.insert(orderItems).values({
+        id: createId(),
+        orderId,
+        productId: product.id,
+        quantity: input.quantity,
+        unitPriceCents: product.priceCents,
+        deliveryPayload: null,
+        createdAt: timestamp
+      });
+
+      await tx.insert(orderInputs).values({
+        id: createId(),
+        orderId,
+        inputJson: JSON.stringify(input.formInput),
+        createdAt: timestamp
+      });
+
+      await tx
+        .update(users)
+        .set({
+          walletBalanceCents: lockedUser.walletBalanceCents - totalCents,
+          updatedAt: timestamp
+        })
+        .where(eq(users.id, lockedUser.id));
+
+      await tx.insert(walletTransactions).values({
+        id: createId(),
+        userId,
+        type: "purchase",
+        amountCents: -totalCents,
+        referenceId: orderId,
+        detail: `ซื้อสินค้า ${product.name}`,
+        createdAt: timestamp
+      });
+    });
+
+    await processOrderFulfillment(orderId);
+    return { orderId, paymentIntentId: null };
+  }
+
   await db.insert(orders).values({
     id: orderId,
     userId,
-    status: input.paymentMethod === "wallet" ? "paid" : "pending_payment",
+    status: "pending_payment",
     subtotalCents: totalCents,
     totalCents,
     paymentMethod: input.paymentMethod,
@@ -294,7 +357,7 @@ export async function createOrder(userId: string, input: CreateOrderInput) {
     createdAt: timestamp
   });
 
-  if (input.paymentMethod === "wallet") {
+  if (false) {
     if (user.walletBalanceCents < totalCents) {
       throw new Error("ยอด Wallet ไม่เพียงพอ");
     }
