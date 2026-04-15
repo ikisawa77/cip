@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 
 const navItems = [
   { to: "/", label: "หน้าหลัก" },
+  { to: "/topup", label: "เติมเงิน" },
   { to: "/account", label: "บัญชีของฉัน" },
   { to: "/admin", label: "หลังบ้าน" }
 ];
@@ -30,6 +31,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </Link>
 
         <nav className="hidden items-center gap-2 lg:flex">
+          <a className="nav-pill rounded-full px-4 py-2 text-sm" href="/#store-categories">
+            หมวดหมู่
+          </a>
           {navItems.map((item) => (
             <NavLink className="nav-pill rounded-full px-4 py-2 text-sm" key={item.to} to={item.to}>
               {item.label}

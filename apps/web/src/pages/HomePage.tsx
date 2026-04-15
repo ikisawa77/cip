@@ -1,8 +1,8 @@
-import { useDeferredValue, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Search, ShieldCheck, Sparkles, TimerReset, Wallet } from "lucide-react";
-import { Link } from "react-router-dom";
+import { startTransition, useDeferredValue, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { apiFetch } from "../lib/api";
 
@@ -33,28 +33,30 @@ function formatMoney(cents: number) {
 
 const supportPoints = [
   {
-    title: "พร้อมขายสินค้าหลายรูปแบบ",
-    body: "รองรับทั้งโค้ดเกม ลิงก์ดาวน์โหลด เติมเกมอัตโนมัติ Wallet และ flow ที่ต่อยอด provider จริงได้ทันที"
+    title: "เมนูหมวดหมู่ช่วยให้เลือกซื้อเร็วขึ้น",
+    body: "แยกสินค้าเป็นหมวดชัดเจนตั้งแต่หน้าแรก ลูกค้าสแกนเจอหมวดที่ต้องการก่อน แล้วค่อยลงลึกไปที่สินค้ารายชิ้นได้ทันที"
   },
   {
-    title: "หลังบ้านพร้อมใช้งานต่อ",
-    body: "มี inventory, provider config, queue jobs และเอกสารภาษาไทยสำหรับส่งต่องานข้ามเครื่อง"
+    title: "เติมเงินแยกหน้าเพื่อใช้งานง่ายขึ้น",
+    body: "แยก flow เติมเงินออกจากหน้า account ให้ใช้งานสะดวกขึ้น ทั้งลูกค้าใหม่และลูกค้าประจำเข้าถึง PromptPay, TrueMoney และ K-Biz match ได้เร็ว"
   },
   {
-    title: "ออกแบบให้อ่านง่ายและตัดสินใจไว",
-    body: "จัดหมวดสินค้าให้สแกนง่าย ลดสิ่งรบกวนบนหน้าร้าน และพาลูกค้าไปสู่การซื้อได้ชัดขึ้น"
+    title: "โครงร้านพร้อมต่อยอดงานขายจริง",
+    body: "ยังคงมี inventory, provider config, queue jobs และเอกสาร handoff ภาษาไทยครบสำหรับย้ายเครื่องหรือพัฒนาต่อ"
   }
 ];
 
 const trustPoints = [
   { icon: ShieldCheck, label: "Webhook + job queue" },
-  { icon: Wallet, label: "Wallet / PromptPay" },
+  { icon: Wallet, label: "Wallet / PromptPay / Top-up" },
   { icon: TimerReset, label: "พร้อมทดสอบ localhost" }
 ];
 
 export function HomePage() {
   const [search, setSearch] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
+  const selectedCategorySlug = searchParams.get("category") ?? "all";
   const catalogQuery = useQuery({
     queryKey: ["catalog"],
     queryFn: () => apiFetch<CatalogCategory[]>("/api/catalog")
@@ -73,7 +75,11 @@ export function HomePage() {
       })
     })) ?? [];
 
-  const featuredProducts = categories.flatMap((category) => category.products).slice(0, 3);
+  const visibleCategories =
+    selectedCategorySlug === "all" ? categories : categories.filter((category) => category.slug === selectedCategorySlug);
+
+  const featuredProducts = visibleCategories.flatMap((category) => category.products).slice(0, 3);
+  const totalVisibleProducts = visibleCategories.reduce((sum, category) => sum + category.products.length, 0);
 
   return (
     <div className="space-y-8 pb-8">
@@ -81,7 +87,7 @@ export function HomePage() {
         <div className="grid gap-8 lg:grid-cols-[1.08fr_0.92fr] lg:items-end">
           <div className="max-w-3xl">
             <motion.div className="chip inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm text-[var(--brand)]" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-              <Sparkles size={16} /> ทดสอบบน localhost และต่อยอดขึ้น Nokhosting ได้
+              <Sparkles size={16} /> หน้าร้านแยกหมวดหมู่ชัด และมีหน้าเติมเงินพร้อมใช้
             </motion.div>
 
             <motion.h1
@@ -90,19 +96,19 @@ export function HomePage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
             >
-              ร้านเติมเกมและดิจิทัลกูดส์ที่ดูสะอาด ใช้ง่าย และพร้อมขายจริง
+              เลือกหมวดสินค้าได้เร็ว เติมเงินได้สะดวก และพร้อมซื้อภายในไม่กี่คลิก
             </motion.h1>
 
             <motion.p className="mt-4 max-w-2xl text-base leading-8 muted-text md:text-lg" initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-              ใช้ฟอนต์ Prompt ทั้งระบบ จัดโครงหน้าใหม่ให้อ่านง่ายขึ้น ลดสีที่รบกวนสายตา และยังคง flow สำคัญอย่าง catalog, auth, wallet, order และ admin ไว้ครบ
+              โครงหน้าร้านรอบนี้ถูกจัดใหม่ให้ลูกค้าเห็นหมวดชัดก่อน เหมาะกับร้านเติมเกม ขาย code และลิงก์ดาวน์โหลดที่ต้องการให้ลูกค้าหาสินค้าเจอไวขึ้นและเติม Wallet ได้จากหน้าเฉพาะ
             </motion.p>
 
             <motion.div className="mt-6 flex flex-wrap gap-3" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-              <a className="primary-button rounded-full px-5 py-3 text-sm font-medium" href="#catalog">
-                ดูหมวดสินค้าทั้งหมด
+              <a className="primary-button rounded-full px-5 py-3 text-sm font-medium" href="#store-categories">
+                เลือกหมวดสินค้า
               </a>
-              <Link className="secondary-button rounded-full px-5 py-3 text-sm font-medium" to="/admin">
-                เปิดหลังบ้านตัวอย่าง
+              <Link className="secondary-button rounded-full px-5 py-3 text-sm font-medium" to="/topup">
+                ไปหน้าเติมเงิน
               </Link>
             </motion.div>
 
@@ -143,7 +149,7 @@ export function HomePage() {
                     </Link>
                   ))
                 ) : (
-                  <div className="panel rounded-[1.4rem] px-4 py-4 text-sm muted-text">กำลังโหลดรายการสินค้า...</div>
+                  <div className="panel rounded-[1.4rem] px-4 py-4 text-sm muted-text">ไม่พบสินค้าที่ตรงกับตัวกรองในตอนนี้</div>
                 )}
               </div>
             </div>
@@ -168,22 +174,58 @@ export function HomePage() {
         ))}
       </section>
 
-      <section className="panel rounded-[2rem] px-5 py-5" id="catalog">
+      <section className="panel rounded-[2rem] px-5 py-5" id="store-categories">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="section-label">Catalog</div>
-            <h2 className="mt-2 text-3xl font-semibold text-slate-950">หมวดสินค้าแบบชัดและสแกนง่าย</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-7 muted-text">
-              แต่ละหมวดถูกจัดวางให้เห็นสินค้าเด่นก่อน แล้วค่อยอ่านรายละเอียดตามต้องการ ช่วยให้ทั้งฝั่งลูกค้าและแอดมินเข้าใจโครงร้านได้เร็วขึ้น
-            </p>
+            <div className="section-label">Store Categories</div>
+            <h2 className="mt-2 text-3xl font-semibold text-slate-950">เมนูหมวดหมู่ฝั่งหน้าร้าน</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-7 muted-text">เลือกหมวดก่อนแล้วค่อยดูสินค้าในหมวดนั้นได้ทันที เหมาะกับร้านที่ขายหลายประเภททั้งเติมเกม โค้ด และสินค้า digital พร้อมส่ง</p>
           </div>
-          <div className="text-sm muted-text">{deferredSearch ? `กำลังกรองด้วยคำว่า "${search}"` : "พร้อมสำหรับการทดสอบ flow สั่งซื้อบน localhost"}</div>
+          <div className="text-sm muted-text">
+            {selectedCategorySlug === "all" ? `แสดงทั้งหมด ${totalVisibleProducts} รายการ` : `กำลังกรองตามหมวด "${selectedCategorySlug}"`}
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            className={`rounded-full px-4 py-2 text-sm transition ${selectedCategorySlug === "all" ? "bg-[var(--text)] text-white" : "secondary-button"}`}
+            onClick={() =>
+              startTransition(() => {
+                setSearchParams((current) => {
+                  const next = new URLSearchParams(current);
+                  next.delete("category");
+                  return next;
+                });
+              })
+            }
+            type="button"
+          >
+            ทุกหมวด
+          </button>
+          {categories.map((category) => (
+            <button
+              className={`rounded-full px-4 py-2 text-sm transition ${selectedCategorySlug === category.slug ? "bg-[var(--text)] text-white" : "secondary-button"}`}
+              key={category.id}
+              onClick={() =>
+                startTransition(() => {
+                  setSearchParams((current) => {
+                    const next = new URLSearchParams(current);
+                    next.set("category", category.slug);
+                    return next;
+                  });
+                })
+              }
+              type="button"
+            >
+              {category.name} <span className="ml-1 opacity-70">({category.products.length})</span>
+            </button>
+          ))}
         </div>
       </section>
 
       <div className="space-y-6">
         <AnimatePresence initial={false}>
-          {categories.map((category, categoryIndex) => (
+          {visibleCategories.map((category, categoryIndex) => (
             <motion.section
               className="grid gap-6 lg:grid-cols-[0.72fr_1.28fr]"
               initial={{ opacity: 0, y: 32 }}
@@ -197,6 +239,9 @@ export function HomePage() {
                 <h3 className="mt-3 text-3xl font-semibold text-slate-950">{category.name}</h3>
                 <p className="mt-3 text-sm leading-7 muted-text">{category.description ?? "หมวดนี้พร้อมต่อยอด flow สินค้าและ checkout ได้ทันที"}</p>
                 <div className="mt-8 text-sm muted-text">{category.products.length} รายการที่แสดง</div>
+                <Link className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]" to="/topup">
+                  ต้องการเติม Wallet ก่อนซื้อ <ArrowRight size={16} />
+                </Link>
               </div>
 
               <div className="grid gap-4 xl:grid-cols-2">

@@ -8,6 +8,7 @@ import { AccountPage } from "./pages/AccountPage";
 import { AdminPage } from "./pages/AdminPage";
 import { HomePage } from "./pages/HomePage";
 import { ProductPage } from "./pages/ProductPage";
+import { TopupPage } from "./pages/TopupPage";
 
 export function App() {
   return (
@@ -16,6 +17,7 @@ export function App() {
         <Routes>
           <Route element={<HomePage />} path="/" />
           <Route element={<ProductPage />} path="/product/:slug" />
+          <Route element={<TopupPage />} path="/topup" />
           <Route
             element={
               <ProtectedRoute>
