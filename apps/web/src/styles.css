@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f5f7fb;
+  --surface: rgba(255, 255, 255, 0.84);
+  --surface-strong: #ffffff;
+  --text: #0f172a;
+  --muted: #5b6475;
+  --line: rgba(148, 163, 184, 0.22);
+  --brand: #0f766e;
+  --brand-2: #fb7185;
+  --shadow: 0 25px 80px rgba(15, 23, 42, 0.12);
+  font-family: "Noto Sans Thai", "IBM Plex Sans Thai", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(20, 184, 166, 0.18), transparent 28%),
+    radial-gradient(circle at top right, rgba(251, 113, 133, 0.16), transparent 24%),
+    linear-gradient(180deg, #fbfdff 0%, #eef4fb 100%);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.panel {
+  background: var(--surface);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.chip {
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.hero-grid {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}

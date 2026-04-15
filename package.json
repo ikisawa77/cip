@@ -1,0 +1,15 @@
+{
+  "name": "cip",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev:web": "corepack pnpm --filter @cip/web dev",
+    "dev:api": "corepack pnpm --filter @cip/api dev",
+    "build": "corepack pnpm -r build",
+    "check": "corepack pnpm -r check",
+    "db:push": "corepack pnpm --filter @cip/api db:push",
+    "db:seed": "corepack pnpm --filter @cip/api db:seed",
+    "test": "corepack pnpm -r test"
+  }
+}
