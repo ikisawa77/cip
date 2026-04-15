@@ -37,12 +37,18 @@ import {
   countActiveSessions,
   createOrder,
   createWalletTopup,
+  getAdminInventorySummary,
   getAdminDashboard,
   getCatalog,
+  getJobsList,
   getOrderForUser,
   getOrdersForUser,
   getProductBySlug,
+  getWalletTransactionsForUser,
+  importInventoryBatch,
   processPendingJobs,
+  requeueJob,
+  settlePaymentIntentById,
   settlePaymentByReference
 } from "./services/store";
 
@@ -210,7 +216,10 @@ app.post("/api/wallet/topup-intents", requireAuth, async (req, res) => {
 
 app.get("/api/wallet/history", requireAuth, async (req, res) => {
   const [user] = await db.select().from(users).where(eq(users.id, req.authUser!.id)).limit(1);
-  res.json({ balanceCents: user?.walletBalanceCents ?? 0 });
+  res.json({
+    balanceCents: user?.walletBalanceCents ?? 0,
+    transactions: await getWalletTransactionsForUser(req.authUser!.id)
+  });
 });
 
 app.post("/api/orders", requireAuth, async (req, res) => {
@@ -306,6 +315,16 @@ app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
   res.json(await db.select().from(orders).orderBy(desc(orders.createdAt)));
 });
 
+app.get("/api/admin/orders/:id", requireAdmin, async (req, res) => {
+  const order = await getOrderForUser(String(req.params.id), req.authUser!.id, true);
+  if (!order) {
+    res.status(404).json({ message: "ไม่พบออเดอร์" });
+    return;
+  }
+
+  res.json(order);
+});
+
 app.post("/api/admin/orders/:id/manual-fulfill", requireAdmin, async (req, res) => {
   await db
     .update(orders)
@@ -348,6 +367,35 @@ app.put("/api/admin/providers/:providerKey", requireAdmin, async (req, res) => {
 
 app.get("/api/admin/webhooks", requireAdmin, async (_req, res) => {
   res.json(await db.select().from(webhookEvents).orderBy(desc(webhookEvents.createdAt)));
+});
+
+app.get("/api/admin/inventory", requireAdmin, async (_req, res) => {
+  res.json(await getAdminInventorySummary());
+});
+
+app.post("/api/admin/inventory/import", requireAdmin, async (req, res) => {
+  const payload = req.body as {
+    productId?: string;
+    kind?: "code" | "download_link" | "account" | "generic";
+    rawText?: string;
+  };
+
+  const count = await importInventoryBatch(
+    String(payload.productId ?? ""),
+    payload.kind ?? "code",
+    String(payload.rawText ?? "").split(/\r?\n/)
+  );
+
+  res.status(201).json({ imported: count });
+});
+
+app.get("/api/admin/jobs", requireAdmin, async (_req, res) => {
+  res.json(await getJobsList());
+});
+
+app.post("/api/admin/jobs/:id/requeue", requireAdmin, async (req, res) => {
+  await requeueJob(String(req.params.id));
+  res.json({ ok: true });
 });
 
 app.post("/api/webhooks/wepay", async (req, res) => {
@@ -396,6 +444,19 @@ app.post("/api/internal/cron/provider-sync", async (req, res) => {
   }
 
   res.json({ ok: true, note: "Provider sync scaffold พร้อมต่อยอดด้วย API จริง" });
+});
+
+app.post("/api/dev/settle-payment/:id", async (req, res) => {
+  if (isProduction) {
+    res.status(404).json({ message: "not found" });
+    return;
+  }
+
+  const settled = await settlePaymentIntentById(String(req.params.id), "dev-local", {
+    source: "dev-local",
+    body: req.body
+  });
+  res.json({ ok: settled });
 });
 
 app.use(express.static(publicDir));

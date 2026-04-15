@@ -21,8 +21,9 @@ import {
   webhookEvents
 } from "../db/schema";
 import { createId } from "../lib/ids";
-import { decryptPayload } from "../lib/security";
+import { decryptPayload, encryptPayload } from "../lib/security";
 import { minutesFromNow, now } from "../lib/time";
+import { getProviderAdapter } from "../providers/registry";
 
 export async function getCatalog() {
   const categoryRows = await db.select().from(categories).orderBy(asc(categories.name));
@@ -366,6 +367,14 @@ export async function getOrdersForUser(userId: string) {
   return db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
 }
 
+export async function getWalletTransactionsForUser(userId: string) {
+  return db
+    .select()
+    .from(walletTransactions)
+    .where(eq(walletTransactions.userId, userId))
+    .orderBy(desc(walletTransactions.createdAt));
+}
+
 export async function settlePaymentByReference(referenceCode: string, providerKey: string, payload: unknown) {
   const [intent] = await db
     .select()
@@ -403,6 +412,20 @@ export async function settlePaymentByReference(referenceCode: string, providerKe
   return true;
 }
 
+export async function settlePaymentIntentById(paymentIntentId: string, providerKey: string, payload: unknown = { source: "dev" }) {
+  const [intent] = await db
+    .select()
+    .from(paymentIntents)
+    .where(eq(paymentIntents.id, paymentIntentId))
+    .limit(1);
+
+  if (!intent) {
+    return false;
+  }
+
+  return settlePaymentByReference(intent.referenceCode, providerKey, payload);
+}
+
 export async function getAdminDashboard() {
   const [orderStats] = await db
     .select({
@@ -433,11 +456,14 @@ export async function processPendingJobs() {
 
     const payload = JSON.parse(job.payloadJson) as { orderId?: string; productType?: string };
     if (job.kind === "provider_purchase" && payload.orderId) {
+      const adapter = getProviderAdapter(payload.productType);
+      const result = await adapter.purchase({ orderId: payload.orderId, payload });
+
       await db
         .update(orders)
         .set({
-          status: "manual_review",
-          notes: `Provider adapter ยังเป็น scaffold สำหรับ ${payload.productType ?? "unknown"}`,
+          status: result.status,
+          notes: result.note,
           updatedAt: now()
         })
         .where(eq(orders.id, payload.orderId));
@@ -456,4 +482,66 @@ export async function cleanupExpiredOtps() {
 export async function countActiveSessions() {
   const [row] = await db.select({ count: sql<number>`count(*)` }).from(sessions);
   return Number(row?.count ?? 0);
+}
+
+export async function getAdminInventorySummary() {
+  const rows = await db
+    .select({
+      id: products.id,
+      name: products.name,
+      slug: products.slug,
+      type: products.type,
+      availableStock: sql<number>`sum(case when ${inventoryItems.isAllocated} = false then 1 else 0 end)`,
+      allocatedStock: sql<number>`sum(case when ${inventoryItems.isAllocated} = true then 1 else 0 end)`
+    })
+    .from(products)
+    .leftJoin(inventoryItems, eq(inventoryItems.productId, products.id))
+    .groupBy(products.id, products.name, products.slug, products.type)
+    .orderBy(asc(products.name));
+
+  return rows.map((row) => ({
+    ...row,
+    availableStock: Number(row.availableStock ?? 0),
+    allocatedStock: Number(row.allocatedStock ?? 0)
+  }));
+}
+
+export async function importInventoryBatch(productId: string, kind: "code" | "download_link" | "account" | "generic", entries: string[]) {
+  const timestamp = now();
+  const values = entries
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry, index) => ({
+      id: createId(),
+      productId,
+      kind,
+      maskedLabel: `${kind.toUpperCase()} #${String(index + 1).padStart(3, "0")}`,
+      encryptedPayload: encryptPayload(entry),
+      isAllocated: false,
+      createdAt: timestamp,
+      allocatedAt: null
+    }));
+
+  if (values.length === 0) {
+    return 0;
+  }
+
+  await db.insert(inventoryItems).values(values);
+  return values.length;
+}
+
+export async function getJobsList() {
+  return db.select().from(jobs).orderBy(desc(jobs.createdAt));
+}
+
+export async function requeueJob(jobId: string) {
+  await db
+    .update(jobs)
+    .set({
+      status: "pending",
+      availableAt: now(),
+      updatedAt: now(),
+      lastError: null
+    })
+    .where(eq(jobs.id, jobId));
 }

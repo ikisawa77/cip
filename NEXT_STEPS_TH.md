@@ -7,5 +7,6 @@
 5. ทดสอบ flow บน localhost ด้วยบัญชี admin/demo
 6. เติม adapter production ของ `Wepay`, `24Payseller`, `Peamsub24hr`, `K-BIZ`, `TrueMoney`, `RDCW` ด้วย payload จริง
 7. เพิ่ม social login LINE / Google / Discord
-8. ทำ admin CRUD ให้ลึกขึ้นสำหรับ inventory, random pools, wallet transactions และ job queue
-9. commit + push พร้อมอัปเดตไฟล์ handoff ภาษาไทยอีกครั้ง
+8. ทำ admin CRUD ให้ลึกขึ้นสำหรับ random pools, wallet adjustments, provider secrets และ webhook replay
+9. เพิ่ม local database bootstrap แบบ one-click ถ้ามี MariaDB client ในเครื่อง
+10. commit + push พร้อมอัปเดตไฟล์ handoff ภาษาไทยอีกครั้ง

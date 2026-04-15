@@ -15,9 +15,18 @@
   - cron endpoints สำหรับ `process-jobs`, `cleanup-otps`, `provider-sync`
 - ทำ seed script พร้อมหมวดหมู่และสินค้าตัวอย่าง
 - ทำ docs ภาษาไทยสำหรับ localhost, Nokhosting, cron jobs และ workflow handoff
+- เพิ่มรอบสองแล้ว:
+  - dev endpoint สำหรับจำลองชำระเงินบน localhost
+  - forgot password flow ใน popup login/register
+  - account page แบบดู order detail และ delivery payload ได้
+  - admin inventory summary + inventory import
+  - admin jobs queue + requeue
+  - provider adapter registry/scaffold แยกไฟล์ พร้อมต่อ API จริง
+  - script `corepack pnpm setup:local` สำหรับช่วยเตรียม `.env.local`
 
 ## สถานะการทดสอบ
 - `corepack pnpm test` ผ่าน
 - `corepack pnpm check` ผ่าน
 - `corepack pnpm build` ผ่าน
+- `corepack pnpm setup:local` ผ่าน
 - ยังไม่ได้รัน `db:push` / `db:seed` จริง เพราะยังไม่ได้ตั้งค่า MariaDB local ในเครื่องนี้

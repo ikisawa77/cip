@@ -1,0 +1,28 @@
+$root = Split-Path -Parent $PSScriptRoot
+$envPath = Join-Path $root ".env.local"
+$examplePath = Join-Path $root ".env.example"
+
+if (-not (Test-Path $envPath)) {
+  Copy-Item $examplePath $envPath
+  Write-Host ".env.local created from .env.example"
+} else {
+  Write-Host ".env.local already exists"
+}
+
+$mysqlCommand = Get-Command mysql -ErrorAction SilentlyContinue
+
+if ($mysqlCommand) {
+  Write-Host "mysql command found"
+  Write-Host 'Run this if you want to create the default database:'
+  Write-Host 'mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS cip_local CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"'
+} else {
+  Write-Host "mysql command not found in PATH"
+  Write-Host "Create the MariaDB database manually or update DB_NAME in .env.local"
+}
+
+Write-Host ""
+Write-Host "Next steps:"
+Write-Host "1. Update DB_HOST / DB_USER / DB_PASSWORD / DB_NAME in .env.local"
+Write-Host "2. Run corepack pnpm db:push"
+Write-Host "3. Run corepack pnpm db:seed"
+Write-Host "4. Run corepack pnpm dev"
