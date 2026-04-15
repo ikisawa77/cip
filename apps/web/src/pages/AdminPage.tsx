@@ -161,7 +161,7 @@ export function AdminPage() {
     return (
       <div className="panel rounded-[2rem] p-6">
         <p className="text-lg font-semibold text-slate-950">เข้าสู่ระบบแอดมินก่อน</p>
-        <button className="mt-4 rounded-full bg-slate-950 px-4 py-2 text-sm text-white" onClick={openAuth}>
+        <button className="mt-4 rounded-full bg-slate-950 px-4 py-2 text-sm text-white" onClick={() => openAuth("login")}>
           Login
         </button>
       </div>

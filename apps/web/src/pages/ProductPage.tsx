@@ -96,7 +96,7 @@ export function ProductPage() {
               className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white"
               onClick={() => {
                 if (!user) {
-                  openAuth();
+                  openAuth("login", `/product/${slug}`);
                   return;
                 }
 
@@ -109,7 +109,7 @@ export function ProductPage() {
               className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700"
               onClick={() => {
                 if (!user) {
-                  openAuth();
+                  openAuth("login", `/product/${slug}`);
                   return;
                 }
 

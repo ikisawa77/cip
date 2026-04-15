@@ -87,6 +87,11 @@ export const forgotPasswordVerifySchema = z.object({
   newPassword: z.string().min(8),
 });
 
+export const authChangePasswordSchema = z.object({
+  currentPassword: z.string().min(8),
+  newPassword: z.string().min(8),
+});
+
 export const walletTopupSchema = z.object({
   amountBaht: z.number().positive(),
   method: z.enum(["promptpay_qr", "truemoney_gift", "kbiz_match"]),
@@ -109,5 +114,6 @@ export type AuthRegisterInput = z.infer<typeof authRegisterSchema>;
 export type AuthLoginInput = z.infer<typeof authLoginSchema>;
 export type ForgotPasswordRequestInput = z.infer<typeof forgotPasswordRequestSchema>;
 export type ForgotPasswordVerifyInput = z.infer<typeof forgotPasswordVerifySchema>;
+export type AuthChangePasswordInput = z.infer<typeof authChangePasswordSchema>;
 export type WalletTopupInput = z.infer<typeof walletTopupSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;

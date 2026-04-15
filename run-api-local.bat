@@ -2,18 +2,11 @@
 setlocal
 
 cd /d "%~dp0"
-set "NODE_EXE=%ProgramFiles%\nodejs\node.exe"
-set "PNPM_JS=%ProgramFiles%\nodejs\node_modules\corepack\dist\pnpm.js"
+set "PNPM_CMD=%APPDATA%\npm\pnpm.cmd"
 
-if not exist "%NODE_EXE%" (
-  echo [ERROR] node.exe not found at "%NODE_EXE%"
-  pause
-  exit /b 1
-)
-
-if not exist "%PNPM_JS%" (
-  echo [ERROR] pnpm.js not found at "%PNPM_JS%"
-  echo Please reinstall Node.js with Corepack support.
+if not exist "%PNPM_CMD%" (
+  echo [ERROR] pnpm.cmd not found at "%PNPM_CMD%"
+  echo Run: npm install -g pnpm@10.33.0
   pause
   exit /b 1
 )
@@ -26,7 +19,7 @@ if not exist "node_modules" (
 )
 
 echo Starting CIP API on http://localhost:3001
-call "%NODE_EXE%" "%PNPM_JS%" dev:api
+call "%PNPM_CMD%" dev:api
 
 if errorlevel 1 (
   echo.

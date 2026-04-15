@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth";
 import { AuthDialog } from "./components/AuthDialog";
 import { Layout } from "./components/Layout";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AccountPage } from "./pages/AccountPage";
 import { AdminPage } from "./pages/AdminPage";
 import { HomePage } from "./pages/HomePage";
@@ -15,8 +16,22 @@ export function App() {
         <Routes>
           <Route element={<HomePage />} path="/" />
           <Route element={<ProductPage />} path="/product/:slug" />
-          <Route element={<AccountPage />} path="/account" />
-          <Route element={<AdminPage />} path="/admin" />
+          <Route
+            element={
+              <ProtectedRoute>
+                <AccountPage />
+              </ProtectedRoute>
+            }
+            path="/account"
+          />
+          <Route
+            element={
+              <ProtectedRoute role="admin">
+                <AdminPage />
+              </ProtectedRoute>
+            }
+            path="/admin"
+          />
         </Routes>
       </Layout>
       <AuthDialog />

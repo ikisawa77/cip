@@ -75,4 +75,5 @@
 - ถ้าเพิ่ง clone โปรเจกต์บนเครื่องใหม่ ให้เริ่มจาก `first-time-setup.bat`
 - ถ้า `node_modules` ยังไม่ถูกติดตั้ง ไฟล์รันระบบจะเตือนก่อนเริ่มงาน
 - ถ้า API เปิดไม่ได้ ให้ตรวจ MariaDB และค่าฐานข้อมูลใน `.env.local`
-- ถ้าเคยเจอหน้าจอ `Welcome to Node.js ...` แปลว่า wrapper ของ `corepack` บน Windows ทำงานผิดปกติ ให้ใช้ไฟล์ `.bat` ชุดล่าสุดใน repo นี้ เพราะสคริปต์จะเรียก `node + pnpm.js` ตรงแทน
+- ถ้าเคยเจอหน้าจอ `Welcome to Node.js ...` แปลว่า wrapper เดิมของ package manager บน Windows ทำงานผิดปกติ ให้ใช้ไฟล์ `.bat` ชุดล่าสุดใน repo นี้ เพราะสคริปต์รันเว็บและ API ผ่าน `npm workspace` แทน
+- ถ้ายังไม่มี `pnpm` ให้รัน `npm install -g pnpm@10.33.0` หนึ่งครั้งก่อนใช้ไฟล์ `.bat`

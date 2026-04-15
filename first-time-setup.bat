@@ -2,18 +2,12 @@
 setlocal
 
 cd /d "%~dp0"
-set "NODE_EXE=%ProgramFiles%\nodejs\node.exe"
-set "PNPM_JS=%ProgramFiles%\nodejs\node_modules\corepack\dist\pnpm.js"
+set "PNPM_CMD=%APPDATA%\npm\pnpm.cmd"
 
-if not exist "%NODE_EXE%" (
-  echo [ERROR] node.exe not found at "%NODE_EXE%"
-  pause
-  exit /b 1
-)
-
-if not exist "%PNPM_JS%" (
-  echo [ERROR] pnpm.js not found at "%PNPM_JS%"
-  echo Please reinstall Node.js with Corepack support.
+if not exist "%PNPM_CMD%" (
+  echo [ERROR] pnpm.cmd not found at "%PNPM_CMD%"
+  echo Run this once in PowerShell:
+  echo npm install -g pnpm@10.33.0
   pause
   exit /b 1
 )
@@ -22,12 +16,12 @@ echo CIP first-time local setup
 echo.
 
 echo [1/5] Installing dependencies...
-call "%NODE_EXE%" "%PNPM_JS%" install
+call "%PNPM_CMD%" install
 if errorlevel 1 goto :fail
 
 echo.
 echo [2/5] Creating .env.local if needed...
-call "%NODE_EXE%" "%PNPM_JS%" setup:local
+call "%PNPM_CMD%" setup:local
 if errorlevel 1 goto :fail
 
 if not exist ".env.local" (
@@ -54,12 +48,12 @@ pause
 
 echo.
 echo [3/5] Pushing database schema...
-call "%NODE_EXE%" "%PNPM_JS%" db:push
+call "%PNPM_CMD%" db:push
 if errorlevel 1 goto :dbfail
 
 echo.
 echo [4/5] Seeding demo data...
-call "%NODE_EXE%" "%PNPM_JS%" db:seed
+call "%PNPM_CMD%" db:seed
 if errorlevel 1 goto :dbfail
 
 echo.
