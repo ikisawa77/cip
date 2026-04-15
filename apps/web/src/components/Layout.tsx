@@ -1,5 +1,6 @@
-import { Coins, House, LayoutDashboard, Package, ShieldCheck, Tags, UserRound, WalletCards } from "lucide-react";
-import { Link, NavLink } from "react-router-dom";
+import { ArrowUp, Coins, House, LayoutDashboard, Package, ShieldCheck, Tags, UserRound, WalletCards } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { useAuth } from "../auth";
 
@@ -21,7 +22,45 @@ const headerItems: HeaderItem[] = [
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, openAuth, logout } = useAuth();
+  const location = useLocation();
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
   const visibleHeaderItems = headerItems.filter((item) => !item.requiresAdmin || user?.role === "admin");
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.scrollY;
+      const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const progress = scrollHeight > 0 ? Math.min(scrollTop / scrollHeight, 1) : 0;
+
+      setShowBackToTop(scrollTop > 280);
+      setScrollProgress(progress);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  const progressPercent = Math.round(scrollProgress * 100);
+  const progressOffset = 75.4 - 75.4 * scrollProgress;
+  const pageLabel =
+    location.pathname === "/"
+      ? "กลับขึ้นไปเลือกเมนูหลัก"
+      : location.pathname.startsWith("/product")
+        ? "กลับขึ้นไปดูข้อมูลสินค้า"
+        : location.pathname.startsWith("/category")
+          ? "กลับขึ้นไปดูหมวดหมู่"
+          : location.pathname.startsWith("/topup")
+            ? "กลับขึ้นไปส่วนเติมเงิน"
+            : location.pathname.startsWith("/account")
+              ? "กลับขึ้นไปส่วนบัญชี"
+              : location.pathname.startsWith("/admin")
+                ? "กลับขึ้นไปเมนูแอดมิน"
+                : "กลับขึ้นไปด้านบน";
 
   return (
     <div className="relative min-h-screen overflow-hidden px-4 py-4 md:px-6">
@@ -81,6 +120,33 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="mx-auto w-full max-w-7xl">{children}</main>
+
+      <button
+        aria-label="Back to top"
+        className={`back-to-top ${showBackToTop ? "back-to-top--visible" : ""}`}
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        type="button"
+      >
+        <span className="back-to-top__icon">
+          <svg aria-hidden="true" className="back-to-top__progress" viewBox="0 0 32 32">
+            <circle className="back-to-top__progress-track" cx="16" cy="16" r="12" />
+            <circle
+              className="back-to-top__progress-value"
+              cx="16"
+              cy="16"
+              r="12"
+              style={{ strokeDashoffset: progressOffset }}
+            />
+          </svg>
+          <ArrowUp size={16} />
+        </span>
+        <span className="back-to-top__copy">
+          <span className="back-to-top__label">กลับขึ้นด้านบน</span>
+          <span className="back-to-top__meta">
+            {pageLabel} · {progressPercent}%
+          </span>
+        </span>
+      </button>
 
       <footer className="panel-soft mx-auto mt-14 flex max-w-7xl flex-wrap items-center gap-3 rounded-[2rem] px-5 py-4 text-sm muted-text">
         <span className="inline-flex items-center gap-2">

@@ -1,31 +1,36 @@
 # Handoff
 
 ## ทำอะไรไปแล้ว
-- ปรับ UX/UI หลายหน้าพร้อมเพิ่ม icon และ section heading กลางให้ใช้ภาษาภาพเดียวกันทั้ง `Home`, `Category`, `Product`, `Account`, `Admin`, `Topup`, `Layout` และ `ProtectedRoute`
-- ปรับ header/menu ให้ลำดับชัดขึ้น และเมนู `หลังบ้าน` เห็นเฉพาะผู้ใช้ที่เป็น `admin`
-- ตรวจสอบ flow ซื้อสินค้าด้วย Wallet บน localhost แล้วพบว่า backend ตัดยอดเงินถูกต้องจริง
-- แก้ [D:\cip\apps\web\src\pages\ProductPage.tsx](D:\cip\apps\web\src\pages\ProductPage.tsx) ให้รีเฟรช `auth/me`, `wallet/history`, `orders` และ `product` หลังสั่งซื้อสำเร็จ จึงเห็นยอดเงินตัดทันที
-- เสริม [D:\cip\apps\api\src\services\store.ts](D:\cip\apps\api\src\services\store.ts) ให้ flow ซื้อด้วย Wallet ใช้ transaction ตั้งแต่ต้น ลดความเสี่ยงเรื่องออเดอร์กับยอดเงินไม่ตรงกัน
+- เพิ่ม flow ยืนยันรหัสผ่านก่อนสั่งซื้อในหน้า [D:\cip\apps\web\src\pages\ProductPage.tsx](D:\cip\apps\web\src\pages\ProductPage.tsx)
+- เพิ่ม endpoint ตรวจรหัสผ่าน `POST /api/auth/confirm-password` ใน [D:\cip\apps\api\src\index.ts](D:\cip\apps\api\src\index.ts)
+- เพิ่ม schema กลางสำหรับ confirm password ใน [D:\cip\packages\shared\src\index.ts](D:\cip\packages\shared\src\index.ts)
+- เพิ่มเมนู `สินค้า` ในหลังบ้านที่ [D:\cip\apps\web\src\pages\AdminPage.tsx](D:\cip\apps\web\src\pages\AdminPage.tsx) เพื่อจัดการสินค้าและราคาได้จริง
+- ขยาย API หลังบ้านสำหรับสร้างและแก้ไขสินค้าให้รองรับข้อมูลที่หน้าร้านใช้ครบ
+- ปรับ `Back to top` ใน [D:\cip\apps\web\src\components\Layout.tsx](D:\cip\apps\web\src\components\Layout.tsx) ให้มี progress และข้อความที่เป็นประโยชน์มากขึ้น
 
 ## ผลทดสอบล่าสุด
+- `corepack pnpm --filter @cip/shared check` ผ่าน
 - `corepack pnpm --filter @cip/api check` ผ่าน
 - `corepack pnpm --filter @cip/api build` ผ่าน
 - `corepack pnpm --filter @cip/web check` ผ่าน
 - `corepack pnpm --filter @cip/web build` ผ่าน
-- ทดสอบ API ซื้อสินค้าด้วย Wallet จริงบน localhost แล้วสำเร็จ ยอดลดจาก `153100` เป็น `141200` เซนต์ตามราคาสินค้า
 
 ## ตอนนี้ระบบอยู่ตรงไหน
-- หน้า storefront หลักมี menu, category detail, product detail และ topup ที่คุมธีมใหม่ค่อนข้างครบ
-- หน้า account และ admin ใช้ icon system และ section head ชุดเดียวกับหน้าร้านแล้ว
-- ปัญหา “ซื้อแล้วเหมือนยอดไม่ลด” ฝั่งหน้าเว็บถูกแก้แล้ว และ backend มี guard เพิ่มขึ้น
+- หน้า product มี modal ยืนยันก่อนซื้อแล้ว โดยผู้ใช้ต้องกรอกรหัสผ่านก่อนสร้างออเดอร์
+- หน้า admin มีส่วนจัดการสินค้าและราคาชัดเจนขึ้น ใช้เพิ่มสินค้าใหม่หรือแก้ไขราคาสินค้าเดิมได้
+- Layout มีปุ่ม `Back to top` ที่ช่วยบอก progress การเลื่อนหน้าและบริบทของหน้าปัจจุบัน
 
 ## ต้องทำอะไรต่อ
-1. ทดสอบหน้าเว็บจริงบน localhost หลังแก้รอบนี้ โดยซื้อสินค้าผ่าน Wallet จาก browser และเช็กยอดใน header/account/product
-2. เก็บ UX/UI เพิ่มใน modal auth และ state loading/empty/error ให้เข้าธีมเดียวกัน
-3. เริ่มเชื่อม provider จริงตัวแรก เช่น `Wepay` หรือ `24Payseller`
+1. ทดสอบการซื้อสินค้าจาก browser จริงทั้ง Wallet และ PromptPay พร้อมตรวจ modal confirm
+2. ทดสอบเมนู `สินค้า` ในหลังบ้านให้ครบ flow เพิ่ม/แก้ราคา/เปิดปิดขาย
+3. เริ่มเชื่อม provider จริงตัวแรก
 
 ## ถ้าจะทำต่อจากเครื่องอื่น
 - pull ล่าสุดจาก `main`
 - รัน `run-localhost.bat`
-- ถ้าจะตรวจ flow ซื้อสินค้า ให้ใช้บัญชี demo แล้วทดสอบจากหน้า product โดยตรง
-- อ่าน `PROGRESS_TH.md` และ `NEXT_STEPS_TH.md` ก่อนเริ่มรอบใหม่
+- อ่าน [D:\cip\PROGRESS_TH.md](D:\cip\PROGRESS_TH.md) และ [D:\cip\NEXT_STEPS_TH.md](D:\cip\NEXT_STEPS_TH.md) ก่อนเริ่มรอบใหม่
+- ถ้าจะทดสอบหลังบ้าน ให้ล็อกอินด้วยบัญชี admin แล้วเข้า [http://127.0.0.1:5173/admin](http://127.0.0.1:5173/admin)
+
+## ข้อควรระวัง
+- งานรอบนี้ยังไม่เชื่อม provider จริง จึงเป็น flow จำลองในระดับระบบภายในก่อน
+- bundle ฝั่งเว็บยังมี warning เรื่องขนาด แต่ยัง build ผ่าน

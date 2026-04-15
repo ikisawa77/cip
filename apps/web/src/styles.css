@@ -156,6 +156,113 @@ textarea::placeholder {
   color: var(--brand);
 }
 
+.back-to-top {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.72rem;
+  border: 1px solid rgba(23, 113, 138, 0.16);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(233, 245, 248, 0.94)),
+    radial-gradient(circle at top, rgba(111, 183, 199, 0.18), transparent 55%);
+  padding: 0.55rem 0.75rem 0.55rem 0.6rem;
+  color: var(--text);
+  box-shadow: 0 24px 44px rgba(24, 45, 53, 0.12);
+  backdrop-filter: blur(16px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(18px) scale(0.96);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease;
+}
+
+.back-to-top--visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.back-to-top:hover {
+  border-color: rgba(23, 113, 138, 0.28);
+  box-shadow: 0 28px 56px rgba(24, 45, 53, 0.16);
+}
+
+.back-to-top__icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 999px;
+  background: var(--text);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.back-to-top__progress {
+  position: absolute;
+  inset: -0.28rem;
+  width: calc(100% + 0.56rem);
+  height: calc(100% + 0.56rem);
+  transform: rotate(-90deg);
+}
+
+.back-to-top__progress-track,
+.back-to-top__progress-value {
+  fill: none;
+  stroke-width: 2;
+}
+
+.back-to-top__progress-track {
+  stroke: rgba(23, 113, 138, 0.14);
+}
+
+.back-to-top__progress-value {
+  stroke: var(--brand);
+  stroke-linecap: round;
+  stroke-dasharray: 75.4;
+  transition: stroke-dashoffset 180ms ease;
+}
+
+.back-to-top__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+}
+
+.back-to-top__label {
+  padding-right: 0.15rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.back-to-top__meta {
+  padding-right: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--text-soft);
+}
+
+@media (max-width: 640px) {
+  .back-to-top {
+    right: 0.9rem;
+    bottom: 0.9rem;
+  }
+
+  .back-to-top__copy {
+    display: none;
+  }
+}
+
 .nav-shell {
   border: 1px solid rgba(22, 49, 59, 0.08);
   border-radius: 999px;

@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BadgeDollarSign,
   Boxes,
   FolderCog,
   KeyRound,
   LayoutDashboard,
   PackageCheck,
+  PackagePlus,
   PlugZap,
   ReceiptText,
   RefreshCcw,
@@ -111,11 +113,47 @@ const emptyInventoryForm = {
   payload: ""
 };
 
+const productTypes = [
+  "TOPUP_API",
+  "DIGITAL_CODE",
+  "DOWNLOAD_LINK",
+  "PREMIUM_API",
+  "ID_PASS_ORDER",
+  "ACCOUNT_STOCK",
+  "RANDOM_POOL",
+  "WALLET_TOPUP"
+] as const;
+
+const emptyProductForm = {
+  id: null as string | null,
+  categoryId: "",
+  slug: "",
+  name: "",
+  description: "",
+  type: "DIGITAL_CODE" as ProductRow["type"],
+  priceBaht: "",
+  compareAtBaht: "",
+  deliveryNote: "",
+  badge: "",
+  coverImage: "",
+  isActive: true
+};
+
 function formatMoney(cents: number) {
   return new Intl.NumberFormat("th-TH", {
     style: "currency",
     currency: "THB"
   }).format(cents / 100);
+}
+
+function parseBahtToCents(value: string) {
+  const amount = Number(value);
+
+  if (!Number.isFinite(amount) || amount < 0) {
+    return 0;
+  }
+
+  return Math.round(amount * 100);
 }
 
 function formatDate(value: string | null) {
@@ -134,6 +172,7 @@ const adminNavItems = [
   { label: "ภาพรวม", href: "#admin-overview", icon: LayoutDashboard },
   { label: "หมวดหมู่สินค้า", href: "#admin-categories", icon: Tags },
   { label: "คลังโค้ด", href: "#admin-inventory", icon: KeyRound },
+  { label: "สินค้า", href: "#admin-products", icon: PackagePlus },
   { label: "Provider", href: "#admin-providers", icon: PlugZap },
   { label: "ออเดอร์ล่าสุด", href: "#admin-orders", icon: ReceiptText },
   { label: "คิวงาน", href: "#admin-jobs", icon: Workflow }
@@ -157,6 +196,9 @@ export function AdminPage() {
   const [categoryForm, setCategoryForm] = useState(emptyCategoryForm);
   const [categoryMessage, setCategoryMessage] = useState<string | null>(null);
   const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [productForm, setProductForm] = useState(emptyProductForm);
+  const [productMessage, setProductMessage] = useState<string | null>(null);
+  const [productError, setProductError] = useState<string | null>(null);
   const [inventoryForm, setInventoryForm] = useState(emptyInventoryForm);
   const [inventoryBulkProductId, setInventoryBulkProductId] = useState("");
   const [inventoryBulkKind, setInventoryBulkKind] = useState<InventoryItemRow["kind"]>("code");
@@ -318,6 +360,68 @@ export function AdminPage() {
     }
   });
 
+  const createProductMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ id: string }>("/api/admin/products", {
+        method: "POST",
+        body: JSON.stringify({
+          categoryId: productForm.categoryId,
+          slug: productForm.slug,
+          name: productForm.name,
+          description: productForm.description,
+          type: productForm.type,
+          priceCents: parseBahtToCents(productForm.priceBaht),
+          compareAtCents: productForm.compareAtBaht ? parseBahtToCents(productForm.compareAtBaht) : null,
+          deliveryNote: productForm.deliveryNote,
+          badge: productForm.badge,
+          coverImage: productForm.coverImage,
+          isActive: productForm.isActive
+        })
+      }),
+    onSuccess: async () => {
+      setProductForm((current) => ({
+        ...emptyProductForm,
+        categoryId: current.categoryId || categoriesQuery.data?.[0]?.id || ""
+      }));
+      setProductError(null);
+      setProductMessage("เพิ่มสินค้าและตั้งราคาเรียบร้อย");
+      await queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
+      await queryClient.invalidateQueries({ queryKey: ["catalog"] });
+    },
+    onError: (error) => {
+      setProductError(error instanceof Error ? error.message : "เพิ่มสินค้าไม่สำเร็จ");
+    }
+  });
+
+  const updateProductMutation = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/admin/products/${productForm.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          categoryId: productForm.categoryId,
+          slug: productForm.slug,
+          name: productForm.name,
+          description: productForm.description,
+          type: productForm.type,
+          priceCents: parseBahtToCents(productForm.priceBaht),
+          compareAtCents: productForm.compareAtBaht ? parseBahtToCents(productForm.compareAtBaht) : null,
+          deliveryNote: productForm.deliveryNote,
+          badge: productForm.badge,
+          coverImage: productForm.coverImage,
+          isActive: productForm.isActive
+        })
+      }),
+    onSuccess: async () => {
+      setProductError(null);
+      setProductMessage("อัปเดตราคาและข้อมูลสินค้าเรียบร้อย");
+      await queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
+      await queryClient.invalidateQueries({ queryKey: ["catalog"] });
+    },
+    onError: (error) => {
+      setProductError(error instanceof Error ? error.message : "อัปเดตสินค้าไม่สำเร็จ");
+    }
+  });
+
   const createInventoryMutation = useMutation({
     mutationFn: () =>
       apiFetch<{ id: string }>("/api/admin/inventory/items", {
@@ -456,6 +560,15 @@ export function AdminPage() {
     setInventoryForm((current) => (current.productId ? current : { ...current, productId: firstProduct.id }));
     setInventoryBulkProductId((current) => current || firstProduct.id);
   }, [productsQuery.data]);
+
+  useEffect(() => {
+    const firstCategory = categoriesQuery.data?.[0];
+    if (!firstCategory) {
+      return;
+    }
+
+    setProductForm((current) => (current.categoryId ? current : { ...current, categoryId: firstCategory.id }));
+  }, [categoriesQuery.data]);
 
   const products = productsQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
@@ -690,6 +803,212 @@ export function AdminPage() {
               </div>
             ))}
             {categories.length === 0 ? <div className="rounded-[1.75rem] border border-dashed border-[var(--line)] px-4 py-5 text-sm muted-text">ยังไม่มีหมวดหมู่ในระบบ</div> : null}
+          </div>
+        </section>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[0.96fr_1.04fr]" id="admin-products">
+        <section className="panel rounded-[2.5rem] p-6">
+          <div className="section-head">
+            <div className="section-head__icon">
+              <PackagePlus size={18} />
+            </div>
+            <p className="section-label">Product Manager</p>
+          </div>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-950">กำหนดราคาและแก้ไขราคาสินค้า</h2>
+          <p className="mt-2 text-sm muted-text">ใช้ส่วนนี้เพิ่มสินค้าใหม่ กำหนดราคาขาย ราคาอ้างอิง และแก้ไขข้อมูลสินค้าที่หน้าร้านต้องแสดงให้ลูกค้าเห็น</p>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <select
+              className="input-field"
+              onChange={(event) => setProductForm((current) => ({ ...current, categoryId: event.target.value }))}
+              value={productForm.categoryId}
+            >
+              <option value="">เลือกหมวดหมู่สินค้า</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="input-field"
+              onChange={(event) => setProductForm((current) => ({ ...current, type: event.target.value as ProductRow["type"] }))}
+              value={productForm.type}
+            >
+              {productTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+            <input
+              className="input-field"
+              onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="ชื่อสินค้า"
+              value={productForm.name}
+            />
+            <input
+              className="input-field"
+              onChange={(event) => setProductForm((current) => ({ ...current, slug: event.target.value }))}
+              placeholder="slug เช่น valorant-60-point-code"
+              value={productForm.slug}
+            />
+            <input
+              className="input-field"
+              inputMode="decimal"
+              onChange={(event) => setProductForm((current) => ({ ...current, priceBaht: event.target.value }))}
+              placeholder="ราคาขาย (บาท)"
+              value={productForm.priceBaht}
+            />
+            <input
+              className="input-field"
+              inputMode="decimal"
+              onChange={(event) => setProductForm((current) => ({ ...current, compareAtBaht: event.target.value }))}
+              placeholder="ราคาเต็มหรือราคาเดิม (บาท)"
+              value={productForm.compareAtBaht}
+            />
+            <input
+              className="input-field"
+              onChange={(event) => setProductForm((current) => ({ ...current, badge: event.target.value }))}
+              placeholder="ป้ายสินค้า เช่น แนะนำ หรือ พร้อมส่ง"
+              value={productForm.badge}
+            />
+            <input
+              className="input-field"
+              onChange={(event) => setProductForm((current) => ({ ...current, coverImage: event.target.value }))}
+              placeholder="ลิงก์รูปหน้าปกสินค้า"
+              value={productForm.coverImage}
+            />
+          </div>
+
+          <textarea
+            className="input-field mt-3 min-h-28"
+            onChange={(event) => setProductForm((current) => ({ ...current, description: event.target.value }))}
+            placeholder="รายละเอียดสินค้าสำหรับหน้าร้าน"
+            value={productForm.description}
+          />
+          <textarea
+            className="input-field mt-3 min-h-24"
+            onChange={(event) => setProductForm((current) => ({ ...current, deliveryNote: event.target.value }))}
+            placeholder="ข้อความแจ้งวิธีรับสินค้า หรือเงื่อนไขหลังสั่งซื้อ"
+            value={productForm.deliveryNote}
+          />
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <label className="icon-chip text-sm">
+              <input
+                checked={productForm.isActive}
+                onChange={(event) => setProductForm((current) => ({ ...current, isActive: event.target.checked }))}
+                type="checkbox"
+              />
+              เปิดขายสินค้า
+            </label>
+            <div className="icon-chip text-sm">
+              <BadgeDollarSign className="icon-chip__icon" size={15} />
+              ราคาที่จะบันทึก: {formatMoney(parseBahtToCents(productForm.priceBaht))}
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              className="primary-button rounded-full px-4 py-3 text-sm"
+              onClick={() => void (productForm.id ? updateProductMutation.mutate() : createProductMutation.mutate())}
+              type="button"
+            >
+              {productForm.id ? "บันทึกการแก้ไขราคาและสินค้า" : "เพิ่มสินค้าใหม่พร้อมราคา"}
+            </button>
+            <button
+              className="secondary-button rounded-full px-4 py-3 text-sm"
+              onClick={() => {
+                setProductForm({
+                  ...emptyProductForm,
+                  categoryId: categories[0]?.id ?? ""
+                });
+                setProductError(null);
+                setProductMessage(null);
+              }}
+              type="button"
+            >
+              ล้างฟอร์มสินค้า
+            </button>
+          </div>
+
+          {productMessage ? <div className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{productMessage}</div> : null}
+          {productError ? <div className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{productError}</div> : null}
+        </section>
+
+        <section className="panel rounded-[2.5rem] p-6">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="section-head">
+                <div className="section-head__icon">
+                  <BadgeDollarSign size={18} />
+                </div>
+                <p className="section-label">Product Price List</p>
+              </div>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-950">สินค้าที่ตั้งราคาไว้ในร้าน</h2>
+            </div>
+            <div className="icon-chip text-sm">{products.length} สินค้า</div>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {products.map((product) => {
+              const category = categories.find((item) => item.id === product.categoryId);
+
+              return (
+                <div className="panel-soft rounded-[1.75rem] px-4 py-4" key={product.id}>
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="section-head__icon h-10 w-10 shrink-0">
+                          <PackageCheck size={16} />
+                        </span>
+                        <div className="text-base font-semibold text-slate-950">{product.name}</div>
+                        <span className="rounded-full bg-[var(--brand-soft)] px-3 py-1 text-xs font-medium text-[var(--brand)]">{product.type}</span>
+                        <span className={`rounded-full px-3 py-1 text-xs font-medium ${product.isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+                          {product.isActive ? "เปิดขาย" : "ปิดขาย"}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs uppercase tracking-[0.24em] text-slate-400">{product.slug}</div>
+                      <div className="mt-3 flex flex-wrap gap-3 text-sm text-slate-700">
+                        <span>หมวด: {category?.name ?? "-"}</span>
+                        <span>ราคาขาย: {formatMoney(product.priceCents)}</span>
+                        <span>ราคาเดิม: {product.compareAtCents ? formatMoney(product.compareAtCents) : "-"}</span>
+                      </div>
+                      {product.badge ? <div className="mt-2 text-sm muted-text">ป้าย: {product.badge}</div> : null}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="secondary-button rounded-full px-4 py-2 text-sm"
+                        onClick={() => {
+                          setProductForm({
+                            id: product.id,
+                            categoryId: product.categoryId,
+                            slug: product.slug,
+                            name: product.name,
+                            description: product.description,
+                            type: product.type,
+                            priceBaht: String(product.priceCents / 100),
+                            compareAtBaht: product.compareAtCents ? String(product.compareAtCents / 100) : "",
+                            deliveryNote: product.deliveryNote ?? "",
+                            badge: product.badge ?? "",
+                            coverImage: product.coverImage ?? "",
+                            isActive: product.isActive
+                          });
+                          setProductError(null);
+                          setProductMessage(`กำลังแก้ไขสินค้า ${product.name}`);
+                        }}
+                        type="button"
+                      >
+                        แก้ไขราคา
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {products.length === 0 ? <div className="rounded-[1.75rem] border border-dashed border-[var(--line)] px-4 py-5 text-sm muted-text">ยังไม่มีสินค้าในระบบ</div> : null}
           </div>
         </section>
       </div>

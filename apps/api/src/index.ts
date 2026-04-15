@@ -9,11 +9,13 @@ import express from "express";
 
 import {
   authChangePasswordSchema,
+  authConfirmPasswordSchema,
   authLoginSchema,
   authRegisterSchema,
   createOrderSchema,
   forgotPasswordRequestSchema,
   forgotPasswordVerifySchema,
+  type ProductType,
   walletTopupSchema
 } from "@cip/shared";
 
@@ -362,6 +364,18 @@ app.post("/api/auth/change-password", requireAuth, async (req, res) => {
   });
 });
 
+app.post("/api/auth/confirm-password", requireAuth, async (req, res) => {
+  const input = authConfirmPasswordSchema.parse(req.body);
+  const [user] = await db.select().from(users).where(eq(users.id, req.authUser!.id)).limit(1);
+
+  if (!user || !(await bcrypt.compare(input.password, user.passwordHash))) {
+    res.status(401).json({ message: "รหัสผ่านไม่ถูกต้อง" });
+    return;
+  }
+
+  res.json({ ok: true, message: "ยืนยันรหัสผ่านสำเร็จ" });
+});
+
 app.post("/api/wallet/topup-intents", requireAuth, async (req, res) => {
   const input = walletTopupSchema.parse(req.body);
   const paymentIntentId = await createWalletTopup(req.authUser!.id, input);
@@ -452,13 +466,13 @@ app.post("/api/admin/products", requireAdmin, async (req, res) => {
     slug: String(payload.slug),
     name: String(payload.name),
     description: String(payload.description),
-    type: payload.type as "TOPUP_API",
+    type: String(payload.type) as ProductType,
     priceCents: Number(payload.priceCents),
-    compareAtCents: null,
-    deliveryNote: null,
-    badge: null,
-    coverImage: null,
-    isActive: true,
+    compareAtCents: payload.compareAtCents ? Number(payload.compareAtCents) : null,
+    deliveryNote: payload.deliveryNote ? String(payload.deliveryNote) : null,
+    badge: payload.badge ? String(payload.badge) : null,
+    coverImage: payload.coverImage ? String(payload.coverImage) : null,
+    isActive: payload.isActive === undefined ? true : Boolean(payload.isActive),
     createdAt: now(),
     updatedAt: now()
   });
@@ -470,11 +484,16 @@ app.put("/api/admin/products/:id", requireAdmin, async (req, res) => {
   await db
     .update(products)
     .set({
+      categoryId: String(payload.categoryId),
+      slug: String(payload.slug),
       name: String(payload.name),
       description: String(payload.description),
+      type: String(payload.type) as ProductType,
       priceCents: Number(payload.priceCents),
+      compareAtCents: payload.compareAtCents ? Number(payload.compareAtCents) : null,
       badge: payload.badge ? String(payload.badge) : null,
       deliveryNote: payload.deliveryNote ? String(payload.deliveryNote) : null,
+      coverImage: payload.coverImage ? String(payload.coverImage) : null,
       isActive: Boolean(payload.isActive),
       updatedAt: now()
     })

@@ -1,22 +1,20 @@
 # ความคืบหน้า
 
 ## รอบล่าสุด
-- ปรับ UX/UI หลายหน้าพร้อมเพิ่ม icon และ section heading กลางให้ใช้ภาษาภาพเดียวกันทั้ง `Home`, `Category`, `Product`, `Account`, `Admin`, `Topup`, `Layout` และ `ProtectedRoute`
-- แก้ flow ซื้อสินค้าด้วย Wallet ที่หน้า product ให้รีเฟรช `auth/me`, `wallet/history`, `orders` และ `product` ทันทีหลังสร้างออเดอร์สำเร็จ จึงเห็นยอดเงินตัดทันทีบนหน้าเว็บ
-- ตรวจสอบ API ซื้อสินค้าจริงบน localhost แล้วพบว่า backend ตัดยอด Wallet ได้ถูกต้อง ปัญหาหลักอยู่ที่หน้าเว็บไม่รีเฟรชข้อมูลหลังซื้อ
-- เสริม backend ใน `createOrder` ให้ซื้อด้วย Wallet ผ่าน transaction ตั้งแต่ต้น เพื่อลดความเสี่ยงเรื่องออเดอร์ถูกสร้างแต่ยอดเงินไม่ sync
-- ทดสอบตัวกรองหมวดหมู่หน้าร้านด้วย catalog จริงบน localhost แล้ว ตัวกรองแสดงเฉพาะสินค้าตามหมวดที่เลือกถูกต้อง
-- ทดสอบสร้าง `paymentIntent` และจำลองชำระเงินบน `/topup` สำเร็จ ยอด Wallet ของบัญชีทดสอบเพิ่มขึ้นจริง
-- เพิ่มหน้า [CategoryPage](D:\cip\apps\web\src\pages\CategoryPage.tsx) สำหรับ route `/category/:slug`
-- เพิ่ม breadcrumb และลิงก์หมวดบน [ProductPage](D:\cip\apps\web\src\pages\ProductPage.tsx)
-- ปรับ [HomePage](D:\cip\apps\web\src\pages\HomePage.tsx) ให้ลิงก์จากหมวดไปหน้า category detail ได้
+- เพิ่มการยืนยันรหัสผ่านก่อนสั่งซื้อใน [D:\cip\apps\web\src\pages\ProductPage.tsx](D:\cip\apps\web\src\pages\ProductPage.tsx) สำหรับปุ่ม `ซื้อด้วย Wallet` และ `ซื้อผ่าน PromptPay`
+- เพิ่ม endpoint `POST /api/auth/confirm-password` ใน [D:\cip\apps\api\src\index.ts](D:\cip\apps\api\src\index.ts) เพื่อให้ฝั่งเว็บตรวจรหัสผ่านผู้ใช้ก่อนสร้างออเดอร์จริง
+- เพิ่ม schema `authConfirmPasswordSchema` ใน [D:\cip\packages\shared\src\index.ts](D:\cip\packages\shared\src\index.ts) เพื่อใช้ร่วมกันระหว่าง web และ api
+- เพิ่มเมนู `สินค้า` ใน [D:\cip\apps\web\src\pages\AdminPage.tsx](D:\cip\apps\web\src\pages\AdminPage.tsx) สำหรับเพิ่มสินค้าใหม่ กำหนดราคา และแก้ไขราคาสินค้าเดิมจากหลังบ้าน
+- ขยาย API หลังบ้านใน [D:\cip\apps\api\src\index.ts](D:\cip\apps\api\src\index.ts) ให้ `POST /api/admin/products` และ `PUT /api/admin/products/:id` รองรับข้อมูลสินค้าได้ครบ เช่น หมวดหมู่ ประเภท ราคา ราคาเดิม badge รูป และสถานะเปิดขาย
+- ปรับปุ่ม `Back to top` ใน [D:\cip\apps\web\src\components\Layout.tsx](D:\cip\apps\web\src\components\Layout.tsx) และ [D:\cip\apps\web\src\styles.css](D:\cip\apps\web\src\styles.css) ให้แสดง progress การเลื่อนหน้าและข้อความตามบริบทของแต่ละหน้า
 
 ## สถานะการทดสอบ
+- `corepack pnpm --filter @cip/shared check` ผ่าน
 - `corepack pnpm --filter @cip/api check` ผ่าน
 - `corepack pnpm --filter @cip/api build` ผ่าน
 - `corepack pnpm --filter @cip/web check` ผ่าน
 - `corepack pnpm --filter @cip/web build` ผ่าน
-- ตรวจ DOM ของ `/category/digital-goods` แล้วพบรายการในหมวดครบ
-- ตรวจ DOM ของ `/product/valorant-60-point-code` แล้ว breadcrumb และลิงก์หมวดแสดงถูกต้อง
-- ทดสอบ API login + topup + settle บน localhost แล้วสำเร็จ
-- ทดสอบ API login + สั่งซื้อสินค้าด้วย Wallet บน localhost แล้วสำเร็จ ยอดจาก `153100` ลดเป็น `141200` เซนต์ตามราคาสินค้า
+
+## หมายเหตุ
+- ฝั่งเว็บยังมี warning เรื่อง bundle size เกิน 500 kB หลัง build แต่ระบบยัง build ผ่านและใช้งานได้
+- งานรอบนี้เน้นฝั่ง UX การยืนยันก่อนซื้อและการจัดการสินค้า/ราคาในหลังบ้าน ยังไม่ได้เชื่อม provider จริงเพิ่ม
