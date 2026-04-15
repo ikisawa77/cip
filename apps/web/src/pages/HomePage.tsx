@@ -239,9 +239,14 @@ export function HomePage() {
                 <h3 className="mt-3 text-3xl font-semibold text-slate-950">{category.name}</h3>
                 <p className="mt-3 text-sm leading-7 muted-text">{category.description ?? "หมวดนี้พร้อมต่อยอด flow สินค้าและ checkout ได้ทันที"}</p>
                 <div className="mt-8 text-sm muted-text">{category.products.length} รายการที่แสดง</div>
-                <Link className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]" to="/topup">
-                  ต้องการเติม Wallet ก่อนซื้อ <ArrowRight size={16} />
-                </Link>
+                <div className="mt-5 flex flex-wrap gap-4">
+                  <Link className="inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]" to={`/category/${category.slug}`}>
+                    เปิดหน้าหมวดนี้ <ArrowRight size={16} />
+                  </Link>
+                  <Link className="inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]" to="/topup">
+                    ต้องการเติม Wallet ก่อนซื้อ <ArrowRight size={16} />
+                  </Link>
+                </div>
               </div>
 
               <div className="grid gap-4 xl:grid-cols-2">

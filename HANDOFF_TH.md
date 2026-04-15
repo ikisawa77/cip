@@ -1,28 +1,28 @@
 # Handoff
 
 ## ทำอะไรไปแล้ว
-- เพิ่มเมนูหมวดหมู่ฝั่งหน้าร้านใน [apps/web/src/pages/HomePage.tsx](D:\cip\apps\web\src\pages\HomePage.tsx)
-- เพิ่มหน้าเติมเงินแยกที่ [apps/web/src/pages/TopupPage.tsx](D:\cip\apps\web\src\pages\TopupPage.tsx)
-- เพิ่ม route `/topup` ใน [apps/web/src/App.tsx](D:\cip\apps\web\src\App.tsx)
-- ปรับ [apps/web/src/components/Layout.tsx](D:\cip\apps\web\src\components\Layout.tsx) ให้เข้าถึงหมวดหมู่และหน้าเติมเงินได้จาก header
+- ทดสอบเมนูหมวดหมู่หน้าร้านบน localhost แล้ว ตัวกรองทำงานตรงกับข้อมูลจริงจาก `catalog`
+- ทดสอบ login + สร้าง `paymentIntent` + จำลองชำระเงินบน `/topup` สำเร็จ
+- เพิ่ม route `/category/:slug` และหน้า [CategoryPage](D:\cip\apps\web\src\pages\CategoryPage.tsx)
+- เพิ่ม breadcrumb และลิงก์หมวดใน [ProductPage](D:\cip\apps\web\src\pages\ProductPage.tsx)
+- ปรับ [HomePage](D:\cip\apps\web\src\pages\HomePage.tsx) ให้เปิดหน้าหมวดแบบแยกได้
+
+## ผลทดสอบล่าสุด
+- หมวด `digital-goods` แสดงเฉพาะสินค้า `Offline RPG Download Bundle` และ `Valorant 60 Point Code`
+- บัญชี `demo@example.com` สร้าง topup 150 บาทได้ และหลัง settle ยอด Wallet เพิ่มจาก `150000` เป็น `165000` เซนต์
+- route `/category/digital-goods` และ `/product/valorant-60-point-code` แสดงผลถูกต้อง
 
 ## ตอนนี้ระบบอยู่ตรงไหน
-- หน้าแรกมี category menu สำหรับกรองหมวดสินค้าแล้ว
-- หน้า `/topup` สร้าง payment intent ได้จาก 3 วิธี: `promptpay_qr`, `truemoney_gift`, `kbiz_match`
-- ถ้าอยู่ localhost สามารถกดจำลองชำระเงินจากหน้าเติมเงินได้
-- build ฝั่งเว็บผ่านและ asset ใหม่ถูกส่งเข้า `apps/api/public` แล้ว
+- หน้าร้านมีทั้ง filter หมวดและหน้า category detail
+- หน้า product มี breadcrumb และลิงก์กลับไปยังหมวด
+- หน้า `/topup` พร้อมใช้ทดสอบ flow เติมเงินบน localhost
 
 ## ต้องทำอะไรต่อ
-1. ทดสอบ flow หน้าร้านจริงบน `http://127.0.0.1:5173/`
-2. ทดสอบ flow เติมเงินบน `http://127.0.0.1:5173/topup`
-3. ถ้าจะเก็บ UX ต่อ ให้เพิ่มหน้า category detail หรือ breadcrumb ที่หน้า product
-4. เริ่มเชื่อม provider จริงตัวแรก
+1. ทดสอบ flow ซื้อสินค้าจากหน้า category detail ไปถึง order
+2. เก็บ UX เพิ่มในหน้า product/category ถ้าต้องการ
+3. เริ่มเชื่อม provider จริงตัวแรก
 
 ## ถ้าจะทำต่อจากเครื่องอื่น
 - pull ล่าสุดจาก `main`
 - รัน `run-localhost.bat`
-- อ่าน `PROGRESS_TH.md` และ `NEXT_STEPS_TH.md` ก่อนเริ่มรอบใหม่
-
-## บัญชีทดสอบ
-- Admin: `admin@example.com` / `ChangeMe123!`
-- Demo: `demo@example.com` / `DemoPass123!`
+- อ่าน `PROGRESS_TH.md` และ `NEXT_STEPS_TH.md`

@@ -6,6 +6,7 @@ import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AccountPage } from "./pages/AccountPage";
 import { AdminPage } from "./pages/AdminPage";
+import { CategoryPage } from "./pages/CategoryPage";
 import { HomePage } from "./pages/HomePage";
 import { ProductPage } from "./pages/ProductPage";
 import { TopupPage } from "./pages/TopupPage";
@@ -16,6 +17,7 @@ export function App() {
       <Layout>
         <Routes>
           <Route element={<HomePage />} path="/" />
+          <Route element={<CategoryPage />} path="/category/:slug" />
           <Route element={<ProductPage />} path="/product/:slug" />
           <Route element={<TopupPage />} path="/topup" />
           <Route

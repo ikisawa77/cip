@@ -19,6 +19,18 @@ type ProductDetail = {
   availableStock: number;
 };
 
+type CatalogCategory = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  products: Array<{
+    id: string;
+    slug: string;
+    name: string;
+  }>;
+};
+
 function formatMoney(cents: number) {
   return new Intl.NumberFormat("th-TH", {
     style: "currency",
@@ -29,6 +41,10 @@ function formatMoney(cents: number) {
 export function ProductPage() {
   const { slug = "" } = useParams();
   const { user, openAuth } = useAuth();
+  const catalogQuery = useQuery({
+    queryKey: ["catalog"],
+    queryFn: () => apiFetch<CatalogCategory[]>("/api/catalog")
+  });
   const productQuery = useQuery({
     queryKey: ["product", slug],
     queryFn: () => apiFetch<ProductDetail>(`/api/products/${slug}`)
@@ -55,12 +71,25 @@ export function ProductPage() {
   }
 
   const product = productQuery.data;
+  const currentCategory = catalogQuery.data?.find((category) => category.products.some((item) => item.slug === product.slug)) ?? null;
 
   return (
     <div className="space-y-6">
-      <Link className="inline-flex items-center gap-2 text-sm muted-text" to="/">
-        <ArrowLeft size={16} /> กลับหน้าหลัก
-      </Link>
+      <nav className="flex flex-wrap items-center gap-2 text-sm muted-text">
+        <Link className="inline-flex items-center gap-2 hover:text-slate-950" to="/">
+          <ArrowLeft size={16} /> หน้าร้าน
+        </Link>
+        {currentCategory ? (
+          <>
+            <span>/</span>
+            <Link className="hover:text-slate-950" to={`/category/${currentCategory.slug}`}>
+              {currentCategory.name}
+            </Link>
+          </>
+        ) : null}
+        <span>/</span>
+        <span className="text-slate-950">{product.name}</span>
+      </nav>
 
       <div className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
         <div className="panel overflow-hidden rounded-[2.5rem]">
@@ -72,10 +101,13 @@ export function ProductPage() {
             <div>
               <p className="section-label">{product.type}</p>
               <h1 className="mt-2 text-3xl font-semibold text-slate-950">{product.name}</h1>
+              {currentCategory ? (
+                <Link className="mt-3 inline-flex text-sm font-medium text-[var(--brand)]" to={`/category/${currentCategory.slug}`}>
+                  หมวด: {currentCategory.name}
+                </Link>
+              ) : null}
             </div>
-            {product.badge ? (
-              <span className="rounded-full bg-[var(--brand-soft)] px-3 py-1 text-xs font-medium text-[var(--brand)]">{product.badge}</span>
-            ) : null}
+            {product.badge ? <span className="rounded-full bg-[var(--brand-soft)] px-3 py-1 text-xs font-medium text-[var(--brand)]">{product.badge}</span> : null}
           </div>
 
           <p className="mt-4 text-base leading-8 muted-text">{product.description}</p>
@@ -85,9 +117,13 @@ export function ProductPage() {
           </div>
 
           <div className="panel-soft mt-5 space-y-3 rounded-[1.5rem] px-5 py-4 text-sm text-slate-700">
-            <div className="flex items-center gap-2"><Coins size={16} /> สต็อกพร้อมส่ง: {product.availableStock}</div>
+            <div className="flex items-center gap-2">
+              <Coins size={16} /> สต็อกพร้อมส่ง: {product.availableStock}
+            </div>
             {product.deliveryNote ? (
-              <div className="flex items-start gap-2"><AlertCircle className="mt-0.5" size={16} /> {product.deliveryNote}</div>
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5" size={16} /> {product.deliveryNote}
+              </div>
             ) : null}
           </div>
 
@@ -126,12 +162,15 @@ export function ProductPage() {
               {orderMutation.data.paymentIntentId ? ` | Payment Intent: ${orderMutation.data.paymentIntentId}` : " | ชำระด้วย Wallet สำเร็จ"}
             </div>
           ) : null}
-          {orderMutation.error instanceof Error ? (
-            <div className="mt-4 rounded-[1.5rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{orderMutation.error.message}</div>
-          ) : null}
+          {orderMutation.error instanceof Error ? <div className="mt-4 rounded-[1.5rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{orderMutation.error.message}</div> : null}
 
           <div className="mt-6 inline-flex items-center gap-2 text-sm muted-text">
             <ShoppingBag size={16} /> หน้านี้พร้อมสำหรับทดสอบ flow ซื้อสินค้าและเช็กสถานะคำสั่งซื้อบน localhost
+          </div>
+          <div className="mt-4">
+            <Link className="secondary-button inline-flex rounded-full px-4 py-2 text-sm" to="/topup">
+              เติม Wallet ก่อนซื้อสินค้านี้
+            </Link>
           </div>
         </motion.div>
       </div>
