@@ -595,7 +595,262 @@ export async function getAdminInventorySummary() {
   }));
 }
 
-export async function importInventoryBatch(productId: string, kind: "code" | "download_link" | "account" | "generic", entries: string[]) {
+function createMaskedInventoryLabel(kind: "code" | "download_link" | "account" | "generic", entry: string, index: number) {
+  const normalized = entry.trim();
+  if (!normalized) {
+    return `${kind.toUpperCase()} #${String(index + 1).padStart(3, "0")}`;
+  }
+
+  if (normalized.length <= 24) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 10)}...${normalized.slice(-6)}`;
+}
+
+async function ensureProductExists(productId: string) {
+  const [product] = await db.select().from(products).where(eq(products.id, productId)).limit(1);
+  if (!product) {
+    throw new Error("ไม่พบสินค้าที่ต้องการจัดการ");
+  }
+
+  return product;
+}
+
+export async function getAdminCategories() {
+  const categoryRows = await db.select().from(categories).orderBy(asc(categories.name));
+  const productCounts = await db
+    .select({
+      categoryId: products.categoryId,
+      totalProducts: sql<number>`count(*)`
+    })
+    .from(products)
+    .groupBy(products.categoryId);
+
+  const countByCategory = new Map(productCounts.map((row) => [row.categoryId, Number(row.totalProducts ?? 0)]));
+
+  return categoryRows.map((row) => ({
+    ...row,
+    totalProducts: countByCategory.get(row.id) ?? 0
+  }));
+}
+
+export async function createAdminCategory(
+  input: {
+    slug: string;
+    name: string;
+    description?: string | null;
+    icon?: string | null;
+    actorUserId?: string;
+  }
+) {
+  const id = createId();
+  const timestamp = now();
+
+  await db.insert(categories).values({
+    id,
+    slug: input.slug.trim(),
+    name: input.name.trim(),
+    description: input.description?.trim() || null,
+    icon: input.icon?.trim() || null,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  });
+
+  await logAudit("category", id, "create", `สร้างหมวดหมู่ ${input.name.trim()}`, input.actorUserId);
+
+  return id;
+}
+
+export async function updateAdminCategory(
+  categoryId: string,
+  input: {
+    slug: string;
+    name: string;
+    description?: string | null;
+    icon?: string | null;
+    actorUserId?: string;
+  }
+) {
+  await db
+    .update(categories)
+    .set({
+      slug: input.slug.trim(),
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+      icon: input.icon?.trim() || null,
+      updatedAt: now()
+    })
+    .where(eq(categories.id, categoryId));
+
+  await logAudit("category", categoryId, "update", `อัปเดตหมวดหมู่ ${input.name.trim()}`, input.actorUserId);
+}
+
+export async function deleteAdminCategory(categoryId: string, actorUserId?: string) {
+  const [usage] = await db
+    .select({ totalProducts: sql<number>`count(*)` })
+    .from(products)
+    .where(eq(products.categoryId, categoryId));
+
+  if (Number(usage?.totalProducts ?? 0) > 0) {
+    throw new Error("ลบหมวดหมู่นี้ไม่ได้ เพราะยังมีสินค้าอยู่ในหมวด");
+  }
+
+  await db.delete(categories).where(eq(categories.id, categoryId));
+  await logAudit("category", categoryId, "delete", "ลบหมวดหมู่จากหลังบ้าน", actorUserId);
+}
+
+export async function getAdminInventoryItems(productId?: string) {
+  const itemRows = await db
+    .select()
+    .from(inventoryItems)
+    .where(productId ? eq(inventoryItems.productId, productId) : undefined)
+    .orderBy(desc(inventoryItems.createdAt));
+
+  const uniqueProductIds = Array.from(new Set(itemRows.map((row) => row.productId)));
+  const productRows =
+    uniqueProductIds.length > 0
+      ? await db
+          .select({
+            id: products.id,
+            name: products.name,
+            slug: products.slug,
+            type: products.type,
+            categoryId: products.categoryId
+          })
+          .from(products)
+          .where(inArray(products.id, uniqueProductIds))
+      : [];
+
+  const uniqueCategoryIds = Array.from(new Set(productRows.map((row) => row.categoryId)));
+  const categoryRows =
+    uniqueCategoryIds.length > 0
+      ? await db
+          .select({
+            id: categories.id,
+            name: categories.name,
+            slug: categories.slug
+          })
+          .from(categories)
+          .where(inArray(categories.id, uniqueCategoryIds))
+      : [];
+
+  const productMap = new Map(productRows.map((row) => [row.id, row]));
+  const categoryMap = new Map(categoryRows.map((row) => [row.id, row]));
+
+  return itemRows.map((row) => {
+    const product = productMap.get(row.productId);
+    const category = product ? categoryMap.get(product.categoryId) : null;
+
+    return {
+      id: row.id,
+      productId: row.productId,
+      productName: product?.name ?? "ไม่พบสินค้า",
+      productSlug: product?.slug ?? "",
+      productType: product?.type ?? "DIGITAL_CODE",
+      categoryId: product?.categoryId ?? null,
+      categoryName: category?.name ?? "ไม่ระบุหมวด",
+      categorySlug: category?.slug ?? "",
+      kind: row.kind,
+      maskedLabel: row.maskedLabel,
+      payload: decryptPayload(row.encryptedPayload),
+      isAllocated: row.isAllocated,
+      createdAt: row.createdAt.toISOString(),
+      allocatedAt: row.allocatedAt?.toISOString() ?? null
+    };
+  });
+}
+
+export async function createAdminInventoryItem(
+  input: {
+    productId: string;
+    kind: "code" | "download_link" | "account" | "generic";
+    maskedLabel?: string | null;
+    payload: string;
+    actorUserId?: string;
+  }
+) {
+  const product = await ensureProductExists(input.productId);
+  const normalizedPayload = input.payload.trim();
+  if (!normalizedPayload) {
+    throw new Error("กรุณากรอกข้อมูล code หรือลิงก์ที่ต้องการขาย");
+  }
+
+  const id = createId();
+  await db.insert(inventoryItems).values({
+    id,
+    productId: product.id,
+    kind: input.kind,
+    maskedLabel: input.maskedLabel?.trim() || createMaskedInventoryLabel(input.kind, normalizedPayload, 0),
+    encryptedPayload: encryptPayload(normalizedPayload),
+    isAllocated: false,
+    createdAt: now(),
+    allocatedAt: null
+  });
+
+  await logAudit("inventory_item", id, "create", `เพิ่ม stock สำหรับ ${product.name}`, input.actorUserId);
+  return id;
+}
+
+export async function updateAdminInventoryItem(
+  inventoryItemId: string,
+  input: {
+    productId: string;
+    kind: "code" | "download_link" | "account" | "generic";
+    maskedLabel?: string | null;
+    payload: string;
+    actorUserId?: string;
+  }
+) {
+  const [existing] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, inventoryItemId)).limit(1);
+  if (!existing) {
+    throw new Error("ไม่พบรายการคลังโค้ดที่ต้องการแก้ไข");
+  }
+
+  if (existing.isAllocated) {
+    throw new Error("รายการนี้ถูกขายไปแล้ว จึงแก้ไขไม่ได้");
+  }
+
+  const product = await ensureProductExists(input.productId);
+  const normalizedPayload = input.payload.trim();
+  if (!normalizedPayload) {
+    throw new Error("กรุณากรอกข้อมูล code หรือลิงก์ที่ต้องการขาย");
+  }
+
+  await db
+    .update(inventoryItems)
+    .set({
+      productId: product.id,
+      kind: input.kind,
+      maskedLabel: input.maskedLabel?.trim() || createMaskedInventoryLabel(input.kind, normalizedPayload, 0),
+      encryptedPayload: encryptPayload(normalizedPayload)
+    })
+    .where(eq(inventoryItems.id, inventoryItemId));
+
+  await logAudit("inventory_item", inventoryItemId, "update", `อัปเดตรายการคลังของ ${product.name}`, input.actorUserId);
+}
+
+export async function deleteAdminInventoryItem(inventoryItemId: string, actorUserId?: string) {
+  const [existing] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, inventoryItemId)).limit(1);
+  if (!existing) {
+    throw new Error("ไม่พบรายการคลังโค้ดที่ต้องการลบ");
+  }
+
+  if (existing.isAllocated) {
+    throw new Error("รายการนี้ถูกขายไปแล้ว จึงลบไม่ได้");
+  }
+
+  await db.delete(inventoryItems).where(eq(inventoryItems.id, inventoryItemId));
+  await logAudit("inventory_item", inventoryItemId, "delete", "ลบรายการคลังโค้ดจากหลังบ้าน", actorUserId);
+}
+
+export async function importInventoryBatch(
+  productId: string,
+  kind: "code" | "download_link" | "account" | "generic",
+  entries: string[],
+  actorUserId?: string
+) {
+  const product = await ensureProductExists(productId);
   const timestamp = now();
   const values = entries
     .map((entry) => entry.trim())
@@ -604,7 +859,7 @@ export async function importInventoryBatch(productId: string, kind: "code" | "do
       id: createId(),
       productId,
       kind,
-      maskedLabel: `${kind.toUpperCase()} #${String(index + 1).padStart(3, "0")}`,
+      maskedLabel: createMaskedInventoryLabel(kind, entry, index),
       encryptedPayload: encryptPayload(entry),
       isAllocated: false,
       createdAt: timestamp,
@@ -616,6 +871,7 @@ export async function importInventoryBatch(productId: string, kind: "code" | "do
   }
 
   await db.insert(inventoryItems).values(values);
+  await logAudit("inventory_item", productId, "bulk_import", `นำเข้า stock ${values.length} รายการสำหรับ ${product.name}`, actorUserId);
   return values.length;
 }
 

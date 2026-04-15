@@ -44,10 +44,16 @@ import { minutesFromNow, now } from "./lib/time";
 import { isProviderKey } from "./providers/registry";
 import {
   cleanupExpiredOtps,
+  createAdminCategory,
+  createAdminInventoryItem,
   countActiveSessions,
   createOrder,
   createWalletTopup,
+  deleteAdminCategory,
+  deleteAdminInventoryItem,
+  getAdminCategories,
   getAdminDashboard,
+  getAdminInventoryItems,
   getAdminInventorySummary,
   getAdminProviders,
   getCatalog,
@@ -63,6 +69,8 @@ import {
   settlePaymentIntentById,
   syncEnabledProviders,
   syncProvider,
+  updateAdminCategory,
+  updateAdminInventoryItem,
   upsertAdminProviderConfig
 } from "./services/store";
 
@@ -396,22 +404,39 @@ app.get("/api/admin/dashboard", requireAdmin, async (_req, res) => {
 });
 
 app.get("/api/admin/categories", requireAdmin, async (_req, res) => {
-  res.json(await db.select().from(categories).orderBy(asc(categories.name)));
+  res.json(await getAdminCategories());
 });
 
 app.post("/api/admin/categories", requireAdmin, async (req, res) => {
   const { slug, name, description, icon } = req.body as Record<string, string>;
-  const id = createId();
-  await db.insert(categories).values({
-    id,
+  const id = await createAdminCategory({
     slug,
     name,
     description: description ?? null,
     icon: icon ?? null,
-    createdAt: now(),
-    updatedAt: now()
+    actorUserId: req.authUser!.id
   });
+
   res.status(201).json({ id });
+});
+
+app.put("/api/admin/categories/:id", requireAdmin, async (req, res) => {
+  const { slug, name, description, icon } = req.body as Record<string, string>;
+
+  await updateAdminCategory(String(req.params.id), {
+    slug,
+    name,
+    description: description ?? null,
+    icon: icon ?? null,
+    actorUserId: req.authUser!.id
+  });
+
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin/categories/:id", requireAdmin, async (req, res) => {
+  await deleteAdminCategory(String(req.params.id), req.authUser!.id);
+  res.json({ ok: true });
 });
 
 app.get("/api/admin/products", requireAdmin, async (_req, res) => {
@@ -536,6 +561,54 @@ app.get("/api/admin/inventory", requireAdmin, async (_req, res) => {
   res.json(await getAdminInventorySummary());
 });
 
+app.get("/api/admin/inventory/items", requireAdmin, async (req, res) => {
+  const productId = typeof req.query.productId === "string" ? req.query.productId : undefined;
+  res.json(await getAdminInventoryItems(productId));
+});
+
+app.post("/api/admin/inventory/items", requireAdmin, async (req, res) => {
+  const payload = req.body as {
+    productId?: string;
+    kind?: "code" | "download_link" | "account" | "generic";
+    maskedLabel?: string;
+    payload?: string;
+  };
+
+  const id = await createAdminInventoryItem({
+    productId: String(payload.productId ?? ""),
+    kind: payload.kind ?? "code",
+    maskedLabel: payload.maskedLabel ?? null,
+    payload: String(payload.payload ?? ""),
+    actorUserId: req.authUser!.id
+  });
+
+  res.status(201).json({ id });
+});
+
+app.put("/api/admin/inventory/items/:id", requireAdmin, async (req, res) => {
+  const payload = req.body as {
+    productId?: string;
+    kind?: "code" | "download_link" | "account" | "generic";
+    maskedLabel?: string;
+    payload?: string;
+  };
+
+  await updateAdminInventoryItem(String(req.params.id), {
+    productId: String(payload.productId ?? ""),
+    kind: payload.kind ?? "code",
+    maskedLabel: payload.maskedLabel ?? null,
+    payload: String(payload.payload ?? ""),
+    actorUserId: req.authUser!.id
+  });
+
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin/inventory/items/:id", requireAdmin, async (req, res) => {
+  await deleteAdminInventoryItem(String(req.params.id), req.authUser!.id);
+  res.json({ ok: true });
+});
+
 app.post("/api/admin/inventory/import", requireAdmin, async (req, res) => {
   const payload = req.body as {
     productId?: string;
@@ -546,7 +619,8 @@ app.post("/api/admin/inventory/import", requireAdmin, async (req, res) => {
   const count = await importInventoryBatch(
     String(payload.productId ?? ""),
     payload.kind ?? "code",
-    String(payload.rawText ?? "").split(/\r?\n/)
+    String(payload.rawText ?? "").split(/\r?\n/),
+    req.authUser!.id
   );
 
   res.status(201).json({ imported: count });
