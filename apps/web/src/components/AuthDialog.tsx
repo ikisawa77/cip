@@ -13,20 +13,20 @@ const modeLabels: Record<AuthDialogMode, string> = {
 
 const modeCopy: Record<AuthDialogMode, { title: string; body: string }> = {
   login: {
-    title: "กลับเข้าสู่ storefront ของคุณ",
-    body: "เข้าถึงคำสั่งซื้อ wallet และการตั้งค่าบัญชีจาก auth flow เดียวที่ออกแบบให้เร็ว ชัด และพร้อมใช้งานจริง"
+    title: "กลับเข้าสู่ระบบเพื่อจัดการออเดอร์และวอลเลต",
+    body: "หน้าต่างเดียวสำหรับล็อกอิน สมัครสมาชิก และรีเซ็ตรหัสผ่าน โดยคง flow เดิมของผู้ใช้ไว้ตลอด"
   },
   register: {
-    title: "สมัครแล้วเข้าใช้งานได้ทันที",
-    body: "หลังสร้างบัญชี ระบบจะออก session ให้ทันทีเพื่อพาคนใช้ต่อไปยัง checkout หรือหน้าที่กำลังเปิดค้างอยู่แบบไม่สะดุด"
+    title: "สร้างบัญชีแล้วไปต่อใน checkout ได้ทันที",
+    body: "หลังสมัครสำเร็จ ระบบจะต่อ session ให้พร้อมใช้งานต่อโดยไม่ทำให้ลูกค้าหลุดจากหน้าที่กำลังดูอยู่"
   },
   "forgot-request": {
-    title: "กู้รหัสผ่านโดยไม่หลุดจากประสบการณ์เดิม",
-    body: "ขอ OTP จากหน้าต่างเดียวกัน แล้วกลับเข้าสู่ระบบต่อได้ทันทีโดยไม่ต้องเปลี่ยนหน้า"
+    title: "ขอ OTP เพื่อรีเซ็ตรหัสผ่านอย่างรวดเร็ว",
+    body: "ออกแบบมาให้กู้บัญชีได้ใน modal เดียว ลดการเปลี่ยนหน้าและช่วยให้การทดสอบบน localhost เร็วขึ้น"
   },
   "forgot-verify": {
     title: "ยืนยัน OTP แล้วตั้งรหัสผ่านใหม่",
-    body: "เมื่อรีเซ็ตรหัสผ่านสำเร็จ ระบบจะล้าง session เดิมให้เพื่อความปลอดภัย แล้วพากลับสู่ขั้นตอนล็อกอินอีกครั้ง"
+    body: "เมื่อรีเซ็ตรหัสผ่านสำเร็จ ระบบจะปิด session เดิมเพื่อเพิ่มความปลอดภัย แล้วพากลับสู่หน้าล็อกอิน"
   }
 };
 
@@ -92,45 +92,43 @@ export function AuthDialog() {
     <AnimatePresence>
       <motion.div
         animate={{ opacity: 1 }}
-        className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#020817]/78 px-4 py-8 backdrop-blur-xl"
+        className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/28 px-4 py-8 backdrop-blur-md"
         exit={{ opacity: 0 }}
         initial={{ opacity: 0 }}
       >
         <motion.div
           animate={{ y: 0, opacity: 1, scale: 1 }}
-          className="relative grid w-full max-w-6xl overflow-hidden rounded-[2.4rem] border border-white/10 bg-[#07111d] shadow-[0_40px_120px_rgba(0,0,0,0.55)] lg:grid-cols-[0.95fr_1.05fr]"
+          className="panel-strong relative grid w-full max-w-6xl overflow-hidden rounded-[2.4rem] lg:grid-cols-[0.94fr_1.06fr]"
           exit={{ y: 12, opacity: 0, scale: 0.985 }}
           initial={{ y: 22, opacity: 0, scale: 0.98 }}
           transition={{ type: "spring", stiffness: 220, damping: 24 }}
         >
-          <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(105,240,208,0.08),transparent_32%,rgba(255,138,106,0.12))]" />
-
-          <div className="relative overflow-hidden border-b border-white/8 px-6 py-8 lg:border-b-0 lg:border-r lg:px-8 lg:py-10">
-            <div className="absolute -left-10 top-16 h-36 w-36 rounded-full bg-[rgba(105,240,208,0.16)] blur-3xl" />
-            <div className="absolute right-0 top-0 h-44 w-44 rounded-full bg-[rgba(255,138,106,0.16)] blur-3xl" />
+          <div className="hero-grid relative overflow-hidden border-b border-[var(--line)] bg-[linear-gradient(180deg,rgba(227,244,248,0.8),rgba(255,255,255,0.94))] px-6 py-8 lg:border-b-0 lg:border-r lg:px-8 lg:py-10">
+            <div className="ambient-orb ambient-orb--a left-[-4rem] top-12 h-36 w-36" />
+            <div className="ambient-orb ambient-orb--b right-[-2rem] top-0 h-36 w-36" />
 
             <div className="relative">
-              <div className="eyebrow">Unified Access Layer</div>
-              <h2 className="mt-4 max-w-md text-4xl font-semibold leading-tight text-white">{modeMeta.title}</h2>
-              <p className="mt-4 max-w-md text-sm leading-7 text-slate-300">{modeMeta.body}</p>
+              <div className="section-label">Unified Access Layer</div>
+              <h2 className="mt-4 max-w-md text-4xl font-semibold leading-tight text-slate-950">{modeMeta.title}</h2>
+              <p className="mt-4 max-w-md text-sm leading-7 muted-text">{modeMeta.body}</p>
 
               <div className="mt-8 space-y-3">
                 {[
-                  { icon: Sparkles, text: "Login และ Register อยู่ใน flow เดียวกัน พร้อม redirect กลับไปหน้าที่ตั้งใจใช้งาน" },
-                  { icon: ShieldCheck, text: "รองรับ OTP reset, session refresh และจัดการอุปกรณ์ที่ยังล็อกอินอยู่ได้" },
-                  { icon: LockKeyhole, text: "เตรียมต่อยอด social login, onboarding และ email verification ได้ต่อทันที" }
+                  { icon: Sparkles, text: "รวม Login, Register และ Forgot Password ไว้ใน flow เดียว" },
+                  { icon: ShieldCheck, text: "รองรับ OTP reset, session refresh และ redirect กลับหน้าที่ใช้งาน" },
+                  { icon: LockKeyhole, text: "พร้อมต่อยอด social login และ email verification ในรอบถัดไป" }
                 ].map(({ icon: Icon, text }) => (
-                  <div className="flex items-center gap-3 rounded-[1.3rem] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-200" key={text}>
+                  <div className="panel-soft flex items-center gap-3 rounded-[1.3rem] px-4 py-4 text-sm text-slate-700" key={text}>
                     <Icon className="text-[var(--brand)]" size={16} />
                     {text}
                   </div>
                 ))}
               </div>
 
-              <div className="mt-8 inline-flex rounded-full border border-white/10 bg-black/18 p-1">
+              <div className="mt-8 inline-flex rounded-full border border-[var(--line)] bg-white/80 p-1">
                 {(["login", "register"] as const).map((item) => (
                   <button
-                    className={`rounded-full px-4 py-2 text-sm transition ${authMode === item ? "bg-white text-slate-950" : "text-slate-300"}`}
+                    className={`rounded-full px-4 py-2 text-sm transition ${authMode === item ? "bg-[var(--text)] text-white" : "text-slate-600"}`}
                     key={item}
                     onClick={() => setMode(item)}
                     type="button"
@@ -141,29 +139,25 @@ export function AuthDialog() {
               </div>
 
               {pendingRedirectPath ? (
-                <div className="mt-6 rounded-[1.3rem] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-300">
-                  หลังล็อกอินสำเร็จ ระบบจะพาคุณกลับไปที่ <strong className="text-white">{pendingRedirectPath}</strong>
+                <div className="panel-soft mt-6 rounded-[1.3rem] px-4 py-4 text-sm text-slate-700">
+                  หลังล็อกอินสำเร็จ ระบบจะพาคุณกลับไปที่ <strong className="text-slate-950">{pendingRedirectPath}</strong>
                 </div>
               ) : null}
             </div>
           </div>
 
           <div className="relative px-6 py-8 lg:px-8 lg:py-10">
-            <button
-              className="absolute right-5 top-5 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
-              onClick={closeAuth}
-              type="button"
-            >
+            <button className="secondary-button absolute right-5 top-5 rounded-full px-4 py-2 text-sm" onClick={closeAuth} type="button">
               ปิด
             </button>
 
             <div className="max-w-xl">
-              <div className="eyebrow">{modeLabels[authMode]}</div>
-              <div className="mt-3 text-2xl font-semibold text-white">
+              <div className="section-label">{modeLabels[authMode]}</div>
+              <div className="mt-3 text-2xl font-semibold text-slate-950">
                 {authMode === "login"
                   ? "เข้าสู่ระบบเพื่อสั่งซื้อและติดตามออเดอร์"
                   : authMode === "register"
-                    ? "สร้างบัญชีใหม่แล้วเดินต่อใน flow เดิมได้ทันที"
+                    ? "สร้างบัญชีใหม่แล้วใช้งานต่อได้ทันที"
                     : authMode === "forgot-request"
                       ? "กรอกอีเมลเพื่อรับ OTP"
                       : "ใส่ OTP พร้อมรหัสผ่านใหม่"}
@@ -212,33 +206,21 @@ export function AuthDialog() {
               >
                 {authMode === "register" ? (
                   <label className="block">
-                    <span className="mb-2 block text-sm text-slate-300">ชื่อที่ใช้แสดง</span>
-                    <input
-                      className="w-full rounded-[1.4rem] border border-white/10 bg-white/5 px-4 py-3 text-white outline-none"
-                      name="displayName"
-                      placeholder="เช่น Nok เติมเกม"
-                      required
-                    />
+                    <span className="mb-2 block text-sm text-slate-700">ชื่อที่ใช้แสดง</span>
+                    <input className="input-field" name="displayName" placeholder="เช่น Nok เติมเกม" required />
                   </label>
                 ) : null}
 
                 <label className="block">
-                  <span className="mb-2 block text-sm text-slate-300">อีเมล</span>
-                  <input
-                    className="w-full rounded-[1.4rem] border border-white/10 bg-white/5 px-4 py-3 text-white outline-none"
-                    defaultValue={forgotEmail}
-                    name="email"
-                    placeholder="you@example.com"
-                    required
-                    type="email"
-                  />
+                  <span className="mb-2 block text-sm text-slate-700">อีเมล</span>
+                  <input className="input-field" defaultValue={forgotEmail} name="email" placeholder="you@example.com" required type="email" />
                 </label>
 
                 {authMode === "login" || authMode === "register" ? (
                   <label className="block">
-                    <span className="mb-2 block text-sm text-slate-300">รหัสผ่าน</span>
+                    <span className="mb-2 block text-sm text-slate-700">รหัสผ่าน</span>
                     <input
-                      className="w-full rounded-[1.4rem] border border-white/10 bg-white/5 px-4 py-3 text-white outline-none"
+                      className="input-field"
                       name="password"
                       onChange={(event) => setDraftPassword(event.target.value)}
                       placeholder="อย่างน้อย 8 ตัวอักษร"
@@ -249,16 +231,13 @@ export function AuthDialog() {
                 ) : null}
 
                 {authMode === "register" ? (
-                  <div className="rounded-[1.4rem] border border-white/10 bg-white/5 px-4 py-4">
-                    <div className="flex items-center justify-between gap-3 text-sm text-slate-300">
+                  <div className="panel-soft rounded-[1.4rem] px-4 py-4">
+                    <div className="flex items-center justify-between gap-3 text-sm muted-text">
                       <span>Password strength</span>
-                      <span className="text-white">{strength.label}</span>
+                      <span className="font-medium text-slate-900">{strength.label}</span>
                     </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className="h-full rounded-full bg-[linear-gradient(90deg,var(--brand),var(--brand-2))] transition-all"
-                        style={{ width: strength.width }}
-                      />
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                      <div className="h-full rounded-full bg-[linear-gradient(90deg,var(--brand),var(--accent))] transition-all" style={{ width: strength.width }} />
                     </div>
                   </div>
                 ) : null}
@@ -266,19 +245,14 @@ export function AuthDialog() {
                 {authMode === "forgot-verify" ? (
                   <>
                     <label className="block">
-                      <span className="mb-2 block text-sm text-slate-300">OTP 6 หลัก</span>
-                      <input
-                        className="w-full rounded-[1.4rem] border border-white/10 bg-white/5 px-4 py-3 text-white outline-none"
-                        name="otp"
-                        placeholder="123456"
-                        required
-                      />
+                      <span className="mb-2 block text-sm text-slate-700">OTP 6 หลัก</span>
+                      <input className="input-field" name="otp" placeholder="123456" required />
                     </label>
 
                     <label className="block">
-                      <span className="mb-2 block text-sm text-slate-300">รหัสผ่านใหม่</span>
+                      <span className="mb-2 block text-sm text-slate-700">รหัสผ่านใหม่</span>
                       <input
-                        className="w-full rounded-[1.4rem] border border-white/10 bg-white/5 px-4 py-3 text-white outline-none"
+                        className="input-field"
                         name="newPassword"
                         onChange={(event) => setDraftPassword(event.target.value)}
                         placeholder="อย่างน้อย 8 ตัวอักษร"
@@ -289,18 +263,14 @@ export function AuthDialog() {
                   </>
                 ) : null}
 
-                {error ? <div className="rounded-[1.4rem] bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
+                {error ? <div className="rounded-[1.4rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
                 {otpPreview ? (
-                  <div className="rounded-[1.4rem] bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                  <div className="rounded-[1.4rem] bg-amber-50 px-4 py-3 text-sm text-amber-700">
                     OTP สำหรับโหมดพัฒนา: <strong>{otpPreview}</strong>
                   </div>
                 ) : null}
 
-                <button
-                  className="w-full rounded-full bg-white px-5 py-3 text-sm font-medium text-slate-950"
-                  disabled={isPending}
-                  type="submit"
-                >
+                <button className="primary-button w-full rounded-full px-5 py-3 text-sm font-medium" disabled={isPending} type="submit">
                   {isPending
                     ? "กำลังดำเนินการ..."
                     : authMode === "login"
@@ -313,24 +283,24 @@ export function AuthDialog() {
                 </button>
               </form>
 
-              <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-400">
+              <div className="mt-5 flex flex-wrap items-center gap-3 text-sm muted-text">
                 {authMode === "login" ? <span>ยังไม่มีบัญชี?</span> : authMode === "register" ? <span>มีบัญชีแล้ว?</span> : <span>กลับไปหน้าเข้าสู่ระบบ</span>}
                 {authMode === "login" ? (
-                  <button className="text-[var(--brand)]" onClick={() => setMode("register")} type="button">
+                  <button className="font-medium text-[var(--brand)]" onClick={() => setMode("register")} type="button">
                     สมัครสมาชิก
                   </button>
                 ) : (
-                  <button className="text-[var(--brand)]" onClick={() => setMode("login")} type="button">
+                  <button className="font-medium text-[var(--brand)]" onClick={() => setMode("login")} type="button">
                     กลับไปล็อกอิน
                   </button>
                 )}
                 {authMode === "login" ? (
-                  <button className="text-slate-300" onClick={() => setMode("forgot-request")} type="button">
+                  <button className="text-slate-500" onClick={() => setMode("forgot-request")} type="button">
                     ลืมรหัสผ่าน
                   </button>
                 ) : null}
                 {authMode === "forgot-verify" ? (
-                  <button className="text-slate-300" onClick={() => openAuth("forgot-request")} type="button">
+                  <button className="text-slate-500" onClick={() => openAuth("forgot-request")} type="button">
                     ขอ OTP ใหม่
                   </button>
                 ) : null}

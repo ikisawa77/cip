@@ -24,6 +24,8 @@
   - forgot password flow
   - account order detail + dev settle button
   - admin inventory import / queue jobs / provider sandbox toggle
+  - เปลี่ยนฟอนต์ทั้งเว็บเป็น Prompt
+  - ปรับธีมใหม่ให้สะอาดตาและลดโทนสีที่หนักเกินไป
 - ทำ build ให้ frontend ออกไปที่ `apps/api/public` เพื่อให้ Express serve ได้
 - เขียน docs และไฟล์ progress/handoff ภาษาไทยครบ
 
@@ -32,6 +34,7 @@
 - ยังไม่ได้เชื่อมฐานข้อมูลจริงในเครื่องนี้
 - provider adapters ยังเป็น scaffold ที่ออกแบบ flow และ endpoint ไว้ก่อน
 - localhost flow สามารถจำลองการชำระเงินได้เมื่อมีฐานข้อมูลจริงแล้ว
+- หน้าเว็บหลักฝั่งลูกค้าและหลังบ้านถูกรีดีไซน์แล้ว แต่ยังควร polish เพิ่มหลังเชื่อมข้อมูลจริง
 
 ## ต้องทำอะไรต่อ
 1. รัน `corepack pnpm setup:local`
