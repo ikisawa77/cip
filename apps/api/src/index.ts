@@ -38,6 +38,7 @@ import {
   createOrder,
   createWalletTopup,
   getAdminInventorySummary,
+  getAdminProviders,
   getAdminDashboard,
   getCatalog,
   getJobsList,
@@ -49,8 +50,12 @@ import {
   processPendingJobs,
   requeueJob,
   settlePaymentIntentById,
-  settlePaymentByReference
+  settlePaymentByReference,
+  syncEnabledProviders,
+  syncProvider,
+  upsertAdminProviderConfig
 } from "./services/store";
+import { isProviderKey } from "./providers/registry";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(currentDir, "../public");
@@ -350,19 +355,36 @@ app.post("/api/admin/orders/:id/retry", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/admin/providers", requireAdmin, async (_req, res) => {
-  res.json(await db.select().from(providerConfigs).orderBy(asc(providerConfigs.providerKey)));
+  res.json(await getAdminProviders());
 });
 
 app.put("/api/admin/providers/:providerKey", requireAdmin, async (req, res) => {
-  await db
-    .update(providerConfigs)
-    .set({
+  const providerKey = String(req.params.providerKey);
+  if (!isProviderKey(providerKey)) {
+    res.status(404).json({ message: "unknown provider" });
+    return;
+  }
+
+  try {
+    await upsertAdminProviderConfig(providerKey, {
       isEnabled: Boolean(req.body.isEnabled),
-      configJson: JSON.stringify(req.body.config ?? {}),
-      updatedAt: now()
-    })
-    .where(eq(providerConfigs.providerKey, String(req.params.providerKey) as "wepay"));
-  res.json({ ok: true });
+      configJson: String(req.body.configJson ?? "{}"),
+      actorUserId: req.authUser?.id
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "invalid provider config" });
+  }
+});
+
+app.post("/api/admin/providers/:providerKey/sync", requireAdmin, async (req, res) => {
+  const providerKey = String(req.params.providerKey);
+  if (!isProviderKey(providerKey)) {
+    res.status(404).json({ message: "unknown provider" });
+    return;
+  }
+
+  res.json(await syncProvider(providerKey));
 });
 
 app.get("/api/admin/webhooks", requireAdmin, async (_req, res) => {
@@ -443,7 +465,12 @@ app.post("/api/internal/cron/provider-sync", async (req, res) => {
     return;
   }
 
-  res.json({ ok: true, note: "Provider sync scaffold พร้อมต่อยอดด้วย API จริง" });
+  const results = await syncEnabledProviders();
+  res.json({
+    ok: results.every((item) => item.ok),
+    count: results.length,
+    results
+  });
 });
 
 app.post("/api/dev/settle-payment/:id", async (req, res) => {

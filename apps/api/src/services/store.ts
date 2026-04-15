@@ -14,6 +14,7 @@ import {
   passwordResetOtps,
   paymentIntents,
   products,
+  providerConfigs,
   randomPools,
   sessions,
   users,
@@ -23,7 +24,7 @@ import {
 import { createId } from "../lib/ids";
 import { decryptPayload, encryptPayload } from "../lib/security";
 import { minutesFromNow, now } from "../lib/time";
-import { getProviderAdapter } from "../providers/registry";
+import { getProviderAdapter, getProviderAdapterByKey, providerKeys, type ProviderKey } from "../providers/registry";
 
 export async function getCatalog() {
   const categoryRows = await db.select().from(categories).orderBy(asc(categories.name));
@@ -442,6 +443,94 @@ export async function getAdminDashboard() {
     usersCount: Number(userStats?.usersCount ?? 0),
     pendingJobs: Number(jobStats?.pendingJobs ?? 0)
   };
+}
+
+export async function getAdminProviders() {
+  const rows = await db.select().from(providerConfigs).orderBy(asc(providerConfigs.providerKey));
+  const byKey = new Map(rows.map((row) => [row.providerKey, row]));
+
+  return providerKeys.map((providerKey) => {
+    const row = byKey.get(providerKey);
+
+    return {
+      id: row?.id ?? `virtual-${providerKey}`,
+      providerKey,
+      isEnabled: row?.isEnabled ?? false,
+      configJson: row?.configJson ?? "{}",
+      updatedAt: row?.updatedAt?.toISOString() ?? null
+    };
+  });
+}
+
+export async function upsertAdminProviderConfig(
+  providerKey: ProviderKey,
+  input: { isEnabled: boolean; configJson: string; actorUserId?: string }
+) {
+  const timestamp = now();
+  const configJson = input.configJson.trim() || "{}";
+  JSON.parse(configJson);
+
+  const [existing] = await db.select().from(providerConfigs).where(eq(providerConfigs.providerKey, providerKey)).limit(1);
+
+  if (existing) {
+    await db
+      .update(providerConfigs)
+      .set({
+        isEnabled: input.isEnabled,
+        configJson,
+        updatedAt: timestamp
+      })
+      .where(eq(providerConfigs.id, existing.id));
+  } else {
+    await db.insert(providerConfigs).values({
+      id: createId(),
+      providerKey,
+      isEnabled: input.isEnabled,
+      configJson,
+      updatedAt: timestamp
+    });
+  }
+
+  await logAudit("provider_config", providerKey, "upsert", `updated provider config enabled=${input.isEnabled}`, input.actorUserId);
+}
+
+export async function syncProvider(providerKey: ProviderKey) {
+  const [config] = await db.select().from(providerConfigs).where(eq(providerConfigs.providerKey, providerKey)).limit(1);
+
+  if (!config || !config.isEnabled) {
+    return {
+      providerKey,
+      ok: false,
+      note: "provider disabled"
+    };
+  }
+
+  const adapter = getProviderAdapterByKey(providerKey);
+  const result = await adapter.sync?.({
+    providerKey,
+    config: JSON.parse(config.configJson) as Record<string, unknown>
+  });
+
+  return {
+    providerKey,
+    ok: result?.ok ?? false,
+    note: result?.note ?? "provider sync not supported"
+  };
+}
+
+export async function syncEnabledProviders() {
+  const configs = await db
+    .select({ providerKey: providerConfigs.providerKey })
+    .from(providerConfigs)
+    .where(eq(providerConfigs.isEnabled, true))
+    .orderBy(asc(providerConfigs.providerKey));
+
+  const results = [];
+  for (const config of configs) {
+    results.push(await syncProvider(config.providerKey));
+  }
+
+  return results;
 }
 
 export async function processPendingJobs() {

@@ -1,0 +1,30 @@
+@echo off
+setlocal
+
+cd /d "%~dp0"
+
+if not exist "node_modules" (
+  echo [ERROR] node_modules not found.
+  echo Run: corepack pnpm install
+  pause
+  exit /b 1
+)
+
+if not exist ".env.local" if not exist ".env" (
+  echo [WARN] .env.local was not found.
+  echo API will use fallback development values until you create it.
+  echo.
+)
+
+echo Opening API and Web dev servers...
+start "CIP API" cmd /k call "%~dp0run-api-local.bat"
+start "CIP WEB" cmd /k call "%~dp0run-web-local.bat"
+
+echo.
+echo API: http://localhost:3001
+echo WEB: http://localhost:5173
+echo.
+echo Close the opened terminal windows to stop the servers.
+pause
+
+endlocal

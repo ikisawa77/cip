@@ -13,10 +13,11 @@ export function createScaffoldAdapter(key: string, label: string): ProviderAdapt
     async purchase(context) {
       return buildScaffoldResult(label, context);
     },
-    async sync() {
+    async sync(context) {
+      const mode = typeof context.config.mode === "string" ? context.config.mode : "unset";
       return {
         ok: true,
-        note: `${label} sync scaffold`
+        note: `${label} sync scaffold (${mode})`
       };
     }
   };

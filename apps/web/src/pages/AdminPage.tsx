@@ -1,8 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useAuth } from "../auth";
 import { apiFetch } from "../lib/api";
+
+type ProviderConfigRow = {
+  id: string;
+  providerKey: string;
+  isEnabled: boolean;
+  configJson: string;
+  updatedAt: string | null;
+};
 
 function formatMoney(cents: number) {
   return new Intl.NumberFormat("th-TH", {
@@ -15,6 +23,10 @@ export function AdminPage() {
   const { user, openAuth } = useAuth();
   const queryClient = useQueryClient();
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [providerConfigJson, setProviderConfigJson] = useState("{}");
+  const [providerEnabled, setProviderEnabled] = useState(false);
+  const [providerFormError, setProviderFormError] = useState<string | null>(null);
+  const [providerSyncMessage, setProviderSyncMessage] = useState<string | null>(null);
   const [inventoryPayload, setInventoryPayload] = useState("");
   const [inventoryProductId, setInventoryProductId] = useState("");
 
@@ -29,18 +41,20 @@ export function AdminPage() {
       }>("/api/admin/dashboard"),
     enabled: user?.role === "admin"
   });
+
   const providerQuery = useQuery({
     queryKey: ["admin", "providers"],
-    queryFn: () =>
-      apiFetch<Array<{ id: string; providerKey: string; isEnabled: boolean; configJson: string }>>("/api/admin/providers"),
+    queryFn: () => apiFetch<ProviderConfigRow[]>("/api/admin/providers"),
     enabled: user?.role === "admin"
   });
+
   const orderQuery = useQuery({
     queryKey: ["admin", "orders"],
     queryFn: () =>
       apiFetch<Array<{ id: string; status: string; totalCents: number; notes: string | null; createdAt: string }>>("/api/admin/orders"),
     enabled: user?.role === "admin"
   });
+
   const inventoryQuery = useQuery({
     queryKey: ["admin", "inventory"],
     queryFn: () =>
@@ -49,6 +63,7 @@ export function AdminPage() {
       ),
     enabled: user?.role === "admin"
   });
+
   const jobsQuery = useQuery({
     queryKey: ["admin", "jobs"],
     queryFn: () =>
@@ -57,19 +72,36 @@ export function AdminPage() {
   });
 
   const providerMutation = useMutation({
-    mutationFn: (providerKey: string) =>
-      apiFetch(`/api/admin/providers/${providerKey}`, {
+    mutationFn: (providerKey: string) => {
+      JSON.parse(providerConfigJson);
+      return apiFetch(`/api/admin/providers/${providerKey}`, {
         method: "PUT",
         body: JSON.stringify({
-          isEnabled: true,
-          config: {
-            mode: "sandbox",
-            updatedFromUi: true
-          }
+          isEnabled: providerEnabled,
+          configJson: providerConfigJson
         })
-      }),
+      });
+    },
     onSuccess: async () => {
+      setProviderFormError(null);
       await queryClient.invalidateQueries({ queryKey: ["admin", "providers"] });
+    },
+    onError: (error) => {
+      setProviderFormError(error instanceof Error ? error.message : "บันทึก provider ไม่สำเร็จ");
+    }
+  });
+
+  const providerSyncMutation = useMutation({
+    mutationFn: (providerKey: string) =>
+      apiFetch<{ providerKey: string; ok: boolean; note: string }>(`/api/admin/providers/${providerKey}/sync`, {
+        method: "POST",
+        body: JSON.stringify({})
+      }),
+    onSuccess: (result) => {
+      setProviderSyncMessage(`${result.providerKey}: ${result.note}`);
+    },
+    onError: (error) => {
+      setProviderSyncMessage(error instanceof Error ? error.message : "sync provider ไม่สำเร็จ");
     }
   });
 
@@ -99,6 +131,31 @@ export function AdminPage() {
       await queryClient.invalidateQueries({ queryKey: ["admin", "jobs"] });
     }
   });
+
+  useEffect(() => {
+    if (selectedProvider) {
+      return;
+    }
+
+    const firstProvider = providerQuery.data?.[0];
+    if (!firstProvider) {
+      return;
+    }
+
+    setSelectedProvider(firstProvider.providerKey);
+  }, [providerQuery.data, selectedProvider]);
+
+  useEffect(() => {
+    const provider = providerQuery.data?.find((item) => item.providerKey === selectedProvider);
+    if (!provider) {
+      return;
+    }
+
+    setProviderConfigJson(provider.configJson || "{}");
+    setProviderEnabled(provider.isEnabled);
+    setProviderFormError(null);
+    setProviderSyncMessage(null);
+  }, [providerQuery.data, selectedProvider]);
 
   if (!user) {
     return (
@@ -136,33 +193,64 @@ export function AdminPage() {
           <p className="text-sm uppercase tracking-[0.3em] text-teal-700">Provider Config</p>
           <h2 className="mt-2 text-2xl font-semibold text-slate-950">สถานะผู้ให้บริการ</h2>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {providerQuery.data?.map((provider) => (
-              <button
-                className="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4 text-left"
-                key={provider.id}
-                onClick={() => setSelectedProvider(provider.providerKey)}
-                type="button"
-              >
-                <div className="text-sm font-medium uppercase tracking-[0.2em] text-slate-900">{provider.providerKey}</div>
-                <div className="mt-2 text-sm text-slate-600">
-                  สถานะ:{" "}
-                  <span className={provider.isEnabled ? "text-emerald-700" : "text-amber-700"}>
-                    {provider.isEnabled ? "เปิดใช้งาน" : "ยังปิดอยู่"}
-                  </span>
-                </div>
-              </button>
-            ))}
+            {providerQuery.data?.map((provider) => {
+              const isSelected = provider.providerKey === selectedProvider;
+
+              return (
+                <button
+                  className={`rounded-[1.5rem] border px-4 py-4 text-left ${
+                    isSelected ? "border-slate-950 bg-slate-950 text-white" : "border-slate-200 bg-white"
+                  }`}
+                  key={provider.id}
+                  onClick={() => setSelectedProvider(provider.providerKey)}
+                  type="button"
+                >
+                  <div className={`text-sm font-medium uppercase tracking-[0.2em] ${isSelected ? "text-white" : "text-slate-900"}`}>
+                    {provider.providerKey}
+                  </div>
+                  <div className={`mt-2 text-sm ${isSelected ? "text-slate-200" : "text-slate-600"}`}>
+                    สถานะ:{" "}
+                    <span className={provider.isEnabled ? "text-emerald-400" : "text-amber-400"}>
+                      {provider.isEnabled ? "เปิดใช้งาน" : "ปิดอยู่"}
+                    </span>
+                  </div>
+                  <div className={`mt-2 text-xs ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
+                    {provider.updatedAt ? new Date(provider.updatedAt).toLocaleString("th-TH") : "ยังไม่เคยตั้งค่า"}
+                  </div>
+                </button>
+              );
+            })}
           </div>
           {selectedProvider ? (
             <div className="mt-4 rounded-[1.5rem] bg-slate-950 px-4 py-4 text-sm text-slate-100">
-              <div>เลือกแล้ว: {selectedProvider}</div>
-              <button
-                className="mt-3 rounded-full bg-white px-4 py-2 text-xs text-slate-950"
-                onClick={() => void providerMutation.mutate(selectedProvider)}
-                type="button"
-              >
-                เปิดโหมด sandbox scaffold
-              </button>
+              <div>กำลังแก้ไข: {selectedProvider}</div>
+              <label className="mt-4 flex items-center gap-3 text-sm">
+                <input checked={providerEnabled} onChange={(event) => setProviderEnabled(event.target.checked)} type="checkbox" />
+                เปิดใช้งาน provider นี้
+              </label>
+              <textarea
+                className="mt-4 min-h-40 w-full rounded-[1.25rem] border border-slate-700 bg-slate-900 px-4 py-3 font-mono text-xs text-slate-100 outline-none"
+                onChange={(event) => setProviderConfigJson(event.target.value)}
+                value={providerConfigJson}
+              />
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  className="rounded-full bg-white px-4 py-2 text-xs text-slate-950"
+                  onClick={() => void providerMutation.mutate(selectedProvider)}
+                  type="button"
+                >
+                  บันทึก config
+                </button>
+                <button
+                  className="rounded-full border border-white/30 px-4 py-2 text-xs text-white"
+                  onClick={() => void providerSyncMutation.mutate(selectedProvider)}
+                  type="button"
+                >
+                  sync ตอนนี้
+                </button>
+              </div>
+              {providerFormError ? <div className="mt-3 rounded-2xl bg-rose-500/10 px-4 py-3 text-rose-200">{providerFormError}</div> : null}
+              {providerSyncMessage ? <div className="mt-3 rounded-2xl bg-emerald-500/10 px-4 py-3 text-emerald-200">{providerSyncMessage}</div> : null}
             </div>
           ) : null}
         </section>

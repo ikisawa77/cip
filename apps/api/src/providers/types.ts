@@ -1,5 +1,10 @@
 import type { OrderStatus } from "@cip/shared";
 
+export type ProviderSyncContext = {
+  providerKey: string;
+  config: Record<string, unknown>;
+};
+
 export type ProviderPurchaseContext = {
   orderId: string;
   payload: Record<string, unknown>;
@@ -13,5 +18,5 @@ export type ProviderPurchaseResult = {
 export interface ProviderAdapter {
   key: string;
   purchase(context: ProviderPurchaseContext): Promise<ProviderPurchaseResult>;
-  sync?(): Promise<{ ok: boolean; note: string }>;
+  sync?(context: ProviderSyncContext): Promise<{ ok: boolean; note: string }>;
 }
