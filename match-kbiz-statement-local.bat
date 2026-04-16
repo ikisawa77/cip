@@ -5,7 +5,7 @@ cd /d "%~dp0"
 set "PNPM_CMD="
 
 if "%~1"=="" (
-  echo Usage: send-promptpay-webhook-local.bat ^<payment-intent-id^>
+  echo Usage: match-kbiz-statement-local.bat ^<path-to-statement^>
   exit /b 1
 )
 
@@ -23,4 +23,4 @@ echo Run: npm install -g pnpm@10.33.0
 exit /b 1
 
 :pnpm_found
-call "%PNPM_CMD%" --filter @cip/api webhook:promptpay --payment-intent-id %1
+call "%PNPM_CMD%" --filter @cip/api match:kbiz --file "%~1"

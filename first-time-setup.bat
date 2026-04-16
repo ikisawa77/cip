@@ -2,25 +2,38 @@
 setlocal
 
 cd /d "%~dp0"
-set "PNPM_CMD=%APPDATA%\npm\pnpm.cmd"
-
-if not exist "%PNPM_CMD%" (
-  echo [ERROR] pnpm.cmd not found at "%PNPM_CMD%"
-  echo Run this once in PowerShell:
-  echo npm install -g pnpm@10.33.0
-  pause
-  exit /b 1
-)
+set "PNPM_CMD="
 
 echo CIP first-time local setup
 echo.
 
-echo [1/5] Installing dependencies...
+echo [0/6] Running local doctor...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\doctor-local.ps1" -Mode setup
+if errorlevel 1 goto :fail
+
+for /f "delims=" %%I in ('where pnpm.cmd 2^>nul') do (
+  set "PNPM_CMD=%%I"
+  goto :pnpm_found
+)
+for /f "delims=" %%I in ('where pnpm 2^>nul') do (
+  set "PNPM_CMD=%%I"
+  goto :pnpm_found
+)
+
+echo [ERROR] pnpm was not found in PATH.
+echo Run this once in PowerShell:
+echo npm install -g pnpm@10.33.0
+pause
+exit /b 1
+
+:pnpm_found
+
+echo [1/6] Installing dependencies...
 call "%PNPM_CMD%" install
 if errorlevel 1 goto :fail
 
 echo.
-echo [2/5] Creating .env.local if needed...
+echo [2/6] Creating .env.local if needed...
 call "%PNPM_CMD%" setup:local
 if errorlevel 1 goto :fail
 

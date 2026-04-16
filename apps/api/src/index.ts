@@ -44,6 +44,7 @@ import {
   setSessionCookie
 } from "./lib/auth";
 import { createId } from "./lib/ids";
+import { normalizeKbizStatementRows, parseKbizStatementText } from "./lib/kbiz-statement";
 import { sendOtpEmail } from "./lib/mailer";
 import { verifyWebhookSignature } from "./lib/security";
 import { minutesFromNow, now } from "./lib/time";
@@ -670,6 +671,51 @@ app.post("/api/internal/promptpay/match-transactions", async (req, res) => {
     res.json(result);
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "internal match transactions ไม่สำเร็จ" });
+  }
+});
+
+app.post("/api/internal/kbiz/match-statement", async (req, res) => {
+  if (req.header("x-cron-secret") !== env.cronSecret) {
+    res.status(403).json({ message: "forbidden" });
+    return;
+  }
+
+  const fileName = typeof req.body.fileName === "string" ? req.body.fileName : undefined;
+
+  try {
+    const rows = Array.isArray(req.body.rows)
+      ? req.body.rows
+      : typeof req.body.text === "string"
+        ? parseKbizStatementText(req.body.text, fileName)
+        : Array.isArray(req.body.transactions)
+          ? req.body.transactions
+          : null;
+
+    if (!rows) {
+      res.status(400).json({ message: "rows, transactions, or text is required" });
+      return;
+    }
+
+    const normalized = normalizeKbizStatementRows(rows);
+    if (normalized.transactions.length === 0) {
+      res.status(400).json({
+        message: "ไม่พบรายการธุรกรรม K-Biz ที่พร้อมจับคู่",
+        normalized: 0,
+        skipped: normalized.skipped,
+        warnings: normalized.warnings
+      });
+      return;
+    }
+
+    const result = await matchPromptpayTransactions(normalized.transactions);
+    res.json({
+      normalized: normalized.transactions.length,
+      skipped: normalized.skipped,
+      warnings: normalized.warnings,
+      result
+    });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "internal kbiz match ไม่สำเร็จ" });
   }
 });
 

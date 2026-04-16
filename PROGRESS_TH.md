@@ -1,6 +1,13 @@
 # ความคืบหน้า
 
 ## รอบล่าสุด
+- เพิ่ม `K-Biz statement bridge`:
+  - endpoint `POST /api/internal/kbiz/match-statement`
+  - script `pnpm --filter @cip/api match:kbiz --file <path-to-statement>`
+  - batch helper `match-kbiz-statement-local.bat`
+- เพิ่ม parser/normalizer สำหรับไฟล์ statement แบบ JSON หรือ CSV ของ K-Biz แล้วแปลงเป็น payload ให้ matcher ใช้ต่อได้
+- เริ่ม performance รอบใหม่ของฝั่งเว็บด้วย route-based code splitting
+- แยกโหลด `AuthDialog`, `CategoryPage`, `ProductPage`, `TopupPage`, `AccountPage`, `AdminPage` แบบ lazy load เพื่อลดภาระหน้าแรก
 - เพิ่ม signed webhook settlement ของ `promptpay`
 - เพิ่ม helper `webhook:promptpay` สำหรับยิง signed webhook ตาม `payment-intent-id`
 - เพิ่ม matcher สำหรับ statement JSON:
@@ -12,6 +19,7 @@
 - อัปเดตเอกสาร localhost และ cron ให้รองรับ matcher
 
 ## สถานะการทดสอบ
+- `pnpm check` ผ่านบนโค้ดล่าสุดหลัง pull
 - `corepack pnpm check` ผ่าน
 - `corepack pnpm build` ผ่าน
 - `corepack pnpm test` ผ่าน

@@ -1,9 +1,8 @@
-import { describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import test from "node:test";
 
-import { createId } from "./lib/ids";
+import { createId } from "./lib/ids.ts";
 
-describe("api smoke", () => {
-  it("creates uuid ids", () => {
-    expect(createId()).toHaveLength(36);
-  });
+test("creates uuid ids", () => {
+  assert.equal(createId().length, 36);
 });

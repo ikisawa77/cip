@@ -2,11 +2,14 @@ node_modules
 .pnpm-store
 dist
 coverage
+.local-tools
+package-lock.json
 .env
 .env.local
 .env.production
 apps/api/public
 apps/api/.tmp
 *.log
+npm-debug.log*
 Thumbs.db
 Desktop.ini

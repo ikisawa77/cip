@@ -77,3 +77,13 @@
 - ถ้า API เปิดไม่ได้ ให้ตรวจ MariaDB และค่าฐานข้อมูลใน `.env.local`
 - ถ้าเคยเจอหน้าจอ `Welcome to Node.js ...` แปลว่า wrapper เดิมของ package manager บน Windows ทำงานผิดปกติ ให้ใช้ไฟล์ `.bat` ชุดล่าสุดใน repo นี้ เพราะสคริปต์รันเว็บและ API ผ่าน `npm workspace` แทน
 - ถ้ายังไม่มี `pnpm` ให้รัน `npm install -g pnpm@10.33.0` หนึ่งครั้งก่อนใช้ไฟล์ `.bat`
+
+## Guardrails สำหรับ 2 เครื่อง
+
+- ใช้ `Node.js 24.12.0` ให้ตรงกันทั้ง 2 เครื่อง
+- ใช้ `pnpm 10.33.0` ให้ตรงกันทั้ง 2 เครื่อง
+- ใช้ `pnpm` อย่างเดียวในรีโปนี้ และอย่าใช้ `npm install`
+- ถ้าจะเช็กเครื่องก่อน setup หรือก่อน run ให้ดับเบิลคลิก `doctor-local.bat`
+- ถ้ามีการ pull งานมาจากอีกเครื่อง ให้รัน `doctor-local.bat` ก่อนทุกครั้ง
+- ถ้าจะเช็กและซ่อมมาตรฐานเครื่อง ให้ใช้ `standardize-local.bat -Mode report` และ `standardize-local.bat -Mode repair`
+- ถ้าจะเทียบรายงานจากอีกเครื่อง ให้ใช้ `compare-machine-standard.bat -ReferencePath "<path-to-other-report>"`

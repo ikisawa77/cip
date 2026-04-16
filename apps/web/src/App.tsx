@@ -1,15 +1,44 @@
+import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 
 import { AuthProvider } from "./auth";
-import { AuthDialog } from "./components/AuthDialog";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-import { AccountPage } from "./pages/AccountPage";
-import { AdminPage } from "./pages/AdminPage";
-import { CategoryPage } from "./pages/CategoryPage";
 import { HomePage } from "./pages/HomePage";
-import { ProductPage } from "./pages/ProductPage";
-import { TopupPage } from "./pages/TopupPage";
+
+const AuthDialog = lazy(async () => {
+  const module = await import("./components/AuthDialog");
+  return { default: module.AuthDialog };
+});
+
+const CategoryPage = lazy(async () => {
+  const module = await import("./pages/CategoryPage");
+  return { default: module.CategoryPage };
+});
+
+const ProductPage = lazy(async () => {
+  const module = await import("./pages/ProductPage");
+  return { default: module.ProductPage };
+});
+
+const TopupPage = lazy(async () => {
+  const module = await import("./pages/TopupPage");
+  return { default: module.TopupPage };
+});
+
+const AccountPage = lazy(async () => {
+  const module = await import("./pages/AccountPage");
+  return { default: module.AccountPage };
+});
+
+const AdminPage = lazy(async () => {
+  const module = await import("./pages/AdminPage");
+  return { default: module.AdminPage };
+});
+
+function PageFallback({ label }: { label: string }) {
+  return <div className="panel rounded-[2rem] p-6 text-sm muted-text">{label}</div>;
+}
 
 export function App() {
   return (
@@ -17,28 +46,55 @@ export function App() {
       <Layout>
         <Routes>
           <Route element={<HomePage />} path="/" />
-          <Route element={<CategoryPage />} path="/category/:slug" />
-          <Route element={<ProductPage />} path="/product/:slug" />
-          <Route element={<TopupPage />} path="/topup" />
           <Route
             element={
-              <ProtectedRoute>
-                <AccountPage />
-              </ProtectedRoute>
+              <Suspense fallback={<PageFallback label="กำลังโหลดหมวดหมู่..." />}>
+                <CategoryPage />
+              </Suspense>
+            }
+            path="/category/:slug"
+          />
+          <Route
+            element={
+              <Suspense fallback={<PageFallback label="กำลังโหลดรายละเอียดสินค้า..." />}>
+                <ProductPage />
+              </Suspense>
+            }
+            path="/product/:slug"
+          />
+          <Route
+            element={
+              <Suspense fallback={<PageFallback label="กำลังโหลดหน้าท็อปอัพ..." />}>
+                <TopupPage />
+              </Suspense>
+            }
+            path="/topup"
+          />
+          <Route
+            element={
+              <Suspense fallback={<PageFallback label="กำลังโหลดหน้าบัญชี..." />}>
+                <ProtectedRoute>
+                  <AccountPage />
+                </ProtectedRoute>
+              </Suspense>
             }
             path="/account"
           />
           <Route
             element={
-              <ProtectedRoute role="admin">
-                <AdminPage />
-              </ProtectedRoute>
+              <Suspense fallback={<PageFallback label="กำลังโหลดหน้าหลังบ้าน..." />}>
+                <ProtectedRoute role="admin">
+                  <AdminPage />
+                </ProtectedRoute>
+              </Suspense>
             }
             path="/admin"
           />
         </Routes>
       </Layout>
-      <AuthDialog />
+      <Suspense fallback={null}>
+        <AuthDialog />
+      </Suspense>
     </AuthProvider>
   );
 }

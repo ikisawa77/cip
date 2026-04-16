@@ -3,7 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=24.12.0 <25",
+    "pnpm": ">=10.33.0 <11"
+  },
+  "volta": {
+    "node": "24.12.0",
+    "pnpm": "10.33.0"
+  },
   "scripts": {
+    "preinstall": "node ./scripts/enforce-package-manager.cjs",
     "dev": "pnpm --parallel --filter @cip/api --filter @cip/web run dev",
     "dev:web": "pnpm --filter @cip/web dev",
     "dev:api": "pnpm --filter @cip/api dev",
@@ -11,6 +20,13 @@
     "check": "pnpm -r check",
     "db:push": "pnpm --filter @cip/api db:push",
     "db:seed": "pnpm --filter @cip/api db:seed",
+    "doctor:local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/doctor-local.ps1",
+    "doctor:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/doctor-local.ps1 -Mode setup",
+    "doctor:run": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/doctor-local.ps1 -Mode run",
+    "standardize:report": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/standardize-local.ps1 -Mode report",
+    "standardize:repair": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/standardize-local.ps1 -Mode repair",
+    "standardize:export": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/standardize-local.ps1 -Mode export",
+    "standardize:compare": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/compare-machine-standard.ps1",
     "test": "pnpm -r test",
     "setup:local": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-local.ps1"
   }

@@ -2,21 +2,29 @@
 setlocal
 
 cd /d "%~dp0"
-set "PNPM_CMD=%APPDATA%\npm\pnpm.cmd"
+set "PNPM_CMD="
 
-if not exist "%PNPM_CMD%" (
-  echo [ERROR] pnpm.cmd not found at "%PNPM_CMD%"
-  echo Run: npm install -g pnpm@10.33.0
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\doctor-local.ps1" -Mode run
+if errorlevel 1 (
   pause
   exit /b 1
 )
 
-if not exist "node_modules" (
-  echo [ERROR] node_modules not found.
-  echo Run: first-time-setup.bat
-  pause
-  exit /b 1
+for /f "delims=" %%I in ('where pnpm.cmd 2^>nul') do (
+  set "PNPM_CMD=%%I"
+  goto :pnpm_found
 )
+for /f "delims=" %%I in ('where pnpm 2^>nul') do (
+  set "PNPM_CMD=%%I"
+  goto :pnpm_found
+)
+
+echo [ERROR] pnpm was not found in PATH.
+echo Run: npm install -g pnpm@10.33.0
+pause
+exit /b 1
+
+:pnpm_found
 
 echo Starting CIP Web on http://localhost:5173
 call "%PNPM_CMD%" dev:web -- --host 127.0.0.1

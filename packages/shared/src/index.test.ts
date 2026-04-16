@@ -1,19 +1,18 @@
-import { describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import test from "node:test";
 
-import { createOrderSchema, productTypeSchema } from "./index";
+import { createOrderSchema, productTypeSchema } from "./index.ts";
 
-describe("shared schemas", () => {
-  it("accepts known product type", () => {
-    expect(productTypeSchema.parse("DIGITAL_CODE")).toBe("DIGITAL_CODE");
+test("accepts known product type", () => {
+  assert.equal(productTypeSchema.parse("DIGITAL_CODE"), "DIGITAL_CODE");
+});
+
+test("fills default payment method for orders", () => {
+  const parsed = createOrderSchema.parse({
+    productId: "p1",
+    quantity: 1,
+    formInput: {}
   });
 
-  it("fills default payment method for orders", () => {
-    const parsed = createOrderSchema.parse({
-      productId: "p1",
-      quantity: 1,
-      formInput: {},
-    });
-
-    expect(parsed.paymentMethod).toBe("wallet");
-  });
+  assert.equal(parsed.paymentMethod, "wallet");
 });

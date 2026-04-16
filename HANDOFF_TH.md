@@ -10,8 +10,10 @@
 - เพิ่ม helper script:
   - [D:\cip\apps\api\src\scripts\send-promptpay-webhook.ts](D:\cip\apps\api\src\scripts\send-promptpay-webhook.ts)
   - [D:\cip\apps\api\src\scripts\match-promptpay-transactions.ts](D:\cip\apps\api\src\scripts\match-promptpay-transactions.ts)
+  - [D:\cip\apps\api\src\scripts\match-kbiz-statement.ts](D:\cip\apps\api\src\scripts\match-kbiz-statement.ts)
   - [D:\cip\send-promptpay-webhook-local.bat](D:\cip\send-promptpay-webhook-local.bat)
   - [D:\cip\match-promptpay-transactions-local.bat](D:\cip\match-promptpay-transactions-local.bat)
+  - [D:\cip\match-kbiz-statement-local.bat](D:\cip\match-kbiz-statement-local.bat)
 
 ## ผลทดสอบล่าสุด
 - `corepack pnpm check` ผ่าน
@@ -28,9 +30,10 @@
 - payment flow แรกพร้อมใช้แล้วในระดับ localhost และพร้อม deploy แบบ Nokhosting-friendly
 - หลังบ้านตรวจ payment intents ได้ทั้งแบบ manual, signed webhook, และ transaction matcher
 - provider ภายนอกอื่น เช่น `wepay`, `24payseller`, `peamsub24hr`, `kbiz`, `truemoney`, `rdcw` ยังเป็น scaffold
+- ฝั่ง bridge ของ `K-Biz statement` เริ่มใช้ได้แล้วผ่าน endpoint `POST /api/internal/kbiz/match-statement` และ script `match:kbiz --file <statement>`
 
 ## ต้องทำอะไรต่อ
-1. ทำ bridge ฝั่ง statement/K-Biz ให้ดึงธุรกรรมจริงแล้วส่งเข้า `match-transactions` หรือ signed webhook อัตโนมัติ
+1. ต่อยอด bridge ฝั่ง statement/K-Biz ให้ดึงธุรกรรมจริงอัตโนมัติจาก source ภายนอก แทนการอ่านไฟล์ export ด้วยมือ
 2. เลือก provider ภายนอกตัวแรกแล้วเชื่อม adapter จริง
 3. เพิ่ม admin operations ลึกขึ้น เช่น refund, manual review, audit viewer
 4. เก็บ performance เรื่อง bundle size ของหน้าเว็บ
