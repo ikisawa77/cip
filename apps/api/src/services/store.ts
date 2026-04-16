@@ -11,6 +11,7 @@ import {
   type CreateOrderInput,
   type FooterContent,
   type HomepageContent,
+  type OrderStatus,
   type PaymentIntentPresentation,
   type ProductType,
   type WalletTopupInput
@@ -572,16 +573,170 @@ export async function getOrderForUser(orderId: string, userId: string, isAdmin =
     .where(and(eq(paymentIntents.targetType, "order"), eq(paymentIntents.targetId, order.id)))
     .limit(1);
 
+  const [providerLink] = isAdmin
+    ? await db.select().from(providerOrderLinks).where(eq(providerOrderLinks.orderId, order.id)).limit(1)
+    : [];
+  const audits = isAdmin
+    ? await db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.entityId, order.id))
+        .orderBy(desc(auditLogs.createdAt))
+    : [];
+
   return {
     ...order,
     items,
     formInput: inputs ? JSON.parse(inputs.inputJson) : {},
-    paymentIntent
+    paymentIntent,
+    providerLink: providerLink ?? null,
+    audits
   };
 }
 
 export async function getOrdersForUser(userId: string) {
   return db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
+}
+
+export async function getAdminOrders() {
+  const orderRows = await db.select().from(orders).orderBy(desc(orders.createdAt));
+  const userIds = Array.from(new Set(orderRows.map((row) => row.userId)));
+  const userRows =
+    userIds.length > 0
+      ? await db
+          .select({
+            id: users.id,
+            email: users.email,
+            displayName: users.displayName
+          })
+          .from(users)
+          .where(inArray(users.id, userIds))
+      : [];
+  const userMap = new Map(userRows.map((row) => [row.id, row]));
+
+  return orderRows.map((row) => ({
+    ...row,
+    userEmail: userMap.get(row.userId)?.email ?? "",
+    userDisplayName: userMap.get(row.userId)?.displayName ?? ""
+  }));
+}
+
+export async function getAdminAuditLogs(entityType?: string, entityId?: string) {
+  const filters = [];
+  if (entityType?.trim()) {
+    filters.push(eq(auditLogs.entityType, entityType.trim()));
+  }
+  if (entityId?.trim()) {
+    filters.push(eq(auditLogs.entityId, entityId.trim()));
+  }
+
+  return db
+    .select()
+    .from(auditLogs)
+    .where(filters.length > 0 ? and(...filters) : undefined)
+    .orderBy(desc(auditLogs.createdAt));
+}
+
+export async function updateAdminOrderStatus(
+  orderId: string,
+  nextStatus: Extract<OrderStatus, "processing" | "manual_review" | "failed" | "fulfilled">,
+  actorUserId?: string,
+  note?: string
+) {
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+  if (!order) {
+    throw new Error("ไม่พบออเดอร์");
+  }
+
+  const nextNote =
+    note?.trim() ||
+    (nextStatus === "fulfilled"
+      ? "ปิดงานด้วยมือจากหลังบ้าน"
+      : nextStatus === "processing"
+        ? "สั่ง retry จากหลังบ้าน"
+        : nextStatus === "manual_review"
+          ? "ส่งเข้า manual review จากหลังบ้าน"
+          : "ทำเครื่องหมาย failed จากหลังบ้าน");
+
+  await db
+    .update(orders)
+    .set({
+      status: nextStatus,
+      notes: nextNote,
+      updatedAt: now()
+    })
+    .where(eq(orders.id, orderId));
+
+  await logAudit("order", orderId, `admin_status_${nextStatus}`, nextNote, actorUserId);
+
+  return getOrderForUser(orderId, order.userId, true);
+}
+
+export async function refundOrderByAdmin(orderId: string, actorUserId?: string, note?: string) {
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+  if (!order) {
+    throw new Error("ไม่พบออเดอร์");
+  }
+
+  if (order.status === "refunded") {
+    throw new Error("ออเดอร์นี้ refund ไปแล้ว");
+  }
+
+  if (order.status === "pending_payment") {
+    throw new Error("ยัง refund ออเดอร์ที่ยังไม่ชำระไม่ได้");
+  }
+
+  const [user] = await db.select().from(users).where(eq(users.id, order.userId)).limit(1);
+  if (!user) {
+    throw new Error("ไม่พบผู้ใช้ของออเดอร์นี้");
+  }
+
+  const refundNote =
+    note?.trim() ||
+    (order.paymentMethod === "wallet"
+      ? `คืน Wallet ${Number((order.totalCents / 100).toFixed(2))} บาท จากหลังบ้าน`
+      : "ทำเครื่องหมาย refunded จากหลังบ้าน");
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(orders)
+      .set({
+        status: "refunded",
+        notes: refundNote,
+        updatedAt: now()
+      })
+      .where(eq(orders.id, orderId));
+
+    if (order.paymentMethod === "wallet") {
+      await tx
+        .update(users)
+        .set({
+          walletBalanceCents: user.walletBalanceCents + order.totalCents,
+          updatedAt: now()
+        })
+        .where(eq(users.id, user.id));
+
+      await tx.insert(walletTransactions).values({
+        id: createId(),
+        userId: user.id,
+        type: "refund",
+        amountCents: order.totalCents,
+        referenceId: orderId,
+        detail: refundNote,
+        createdAt: now()
+      });
+    }
+  });
+
+  await logAudit(
+    "order",
+    orderId,
+    "refund",
+    `${refundNote} | paymentMethod=${order.paymentMethod}`,
+    actorUserId
+  );
+
+  return getOrderForUser(orderId, order.userId, true);
 }
 
 export async function getWalletTransactionsForUser(userId: string) {

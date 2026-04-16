@@ -87,6 +87,47 @@ type OrderRow = {
   totalCents: number;
   notes: string | null;
   createdAt: string;
+  paymentMethod?: "wallet" | "promptpay_qr";
+  userId?: string;
+  userEmail?: string;
+  userDisplayName?: string;
+};
+
+type AuditLogRow = {
+  id: string;
+  actorUserId: string | null;
+  entityType: string;
+  entityId: string;
+  action: string;
+  detail: string;
+  createdAt: string;
+};
+
+type OrderDetailRow = {
+  id: string;
+  status: string;
+  subtotalCents: number;
+  totalCents: number;
+  paymentMethod: "wallet" | "promptpay_qr";
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: Array<{
+    id: string;
+    productId: string;
+    quantity: number;
+    unitPriceCents: number;
+    deliveryPayload: string | null;
+  }>;
+  formInput: Record<string, string>;
+  paymentIntent: PaymentIntentRow | null;
+  providerLink: {
+    providerKey: string;
+    providerOrderId: string | null;
+    latestStatus: string;
+    updatedAt: string;
+  } | null;
+  audits: AuditLogRow[];
 };
 
 type JobRow = {
@@ -360,6 +401,9 @@ export function AdminPage() {
   const [inventoryProductFilter, setInventoryProductFilter] = useState("all");
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [orderMessage, setOrderMessage] = useState<string | null>(null);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [paymentMatcherPayload, setPaymentMatcherPayload] = useState(
     JSON.stringify(
       [
@@ -423,6 +467,21 @@ export function AdminPage() {
     enabled: user?.role === "admin"
   });
 
+  const selectedOrderDetailQuery = useQuery({
+    queryKey: ["admin", "orders", "detail", selectedOrderId],
+    queryFn: () => apiFetch<OrderDetailRow>(`/api/admin/orders/${selectedOrderId}`),
+    enabled: user?.role === "admin" && Boolean(selectedOrderId)
+  });
+
+  const auditLogsQuery = useQuery({
+    queryKey: ["admin", "audit-logs", selectedOrderId],
+    queryFn: () =>
+      apiFetch<AuditLogRow[]>(
+        selectedOrderId ? `/api/admin/audit-logs?entityType=order&entityId=${selectedOrderId}` : "/api/admin/audit-logs"
+      ),
+    enabled: user?.role === "admin"
+  });
+
   const inventoryQuery = useQuery({
     queryKey: ["admin", "inventory"],
     queryFn: () => apiFetch<InventorySummaryRow[]>("/api/admin/inventory"),
@@ -478,6 +537,37 @@ export function AdminPage() {
     },
     onError: (error) => {
       setProviderSyncMessage(error instanceof Error ? error.message : "sync provider ไม่สำเร็จ");
+    }
+  });
+
+  const orderActionMutation = useMutation({
+    mutationFn: ({
+      orderId,
+      action,
+      note
+    }: {
+      orderId: string;
+      action: "manual-fulfill" | "retry" | "manual-review" | "refund";
+      note?: string;
+    }) =>
+      apiFetch<OrderDetailRow>(`/api/admin/orders/${orderId}/${action}`, {
+        method: "POST",
+        body: JSON.stringify(note ? { note } : {})
+      }),
+    onSuccess: async (result, variables) => {
+      setOrderError(null);
+      setOrderMessage(`อัปเดตออเดอร์ ${result.id} ด้วย action ${variables.action} เรียบร้อย`);
+      setSelectedOrderId(result.id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "orders", "detail", result.id] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "audit-logs"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] })
+      ]);
+    },
+    onError: (error) => {
+      setOrderMessage(null);
+      setOrderError(error instanceof Error ? error.message : "จัดการออเดอร์ไม่สำเร็จ");
     }
   });
 
@@ -833,6 +923,19 @@ export function AdminPage() {
     setProviderFormError(null);
     setProviderSyncMessage(null);
   }, [providerQuery.data, selectedProvider]);
+
+  useEffect(() => {
+    if (selectedOrderId) {
+      return;
+    }
+
+    const firstOrder = orderQuery.data?.[0];
+    if (!firstOrder) {
+      return;
+    }
+
+    setSelectedOrderId(firstOrder.id);
+  }, [orderQuery.data, selectedOrderId]);
 
   useEffect(() => {
     if (!homepageContentQuery.data) {
@@ -2383,6 +2486,130 @@ export function AdminPage() {
           </div>
         </section>
       </div>
+
+      <section className="panel rounded-[2.5rem] p-6">
+        <div className="section-head">
+          <div className="section-head__icon">
+            <ShieldCheck size={18} />
+          </div>
+          <p className="section-label">Admin Operations</p>
+        </div>
+        <h2 className="mt-2 text-2xl font-semibold text-slate-950">order detail, refund และ audit log</h2>
+        <div className="mt-4 grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
+          <div className="space-y-3">
+            {orderQuery.data?.slice(0, 10).map((order) => {
+              const isSelected = order.id === selectedOrderId;
+              return (
+                <button
+                  className={`panel-soft w-full rounded-[1.5rem] px-4 py-4 text-left transition ${
+                    isSelected ? "border border-[var(--brand)] bg-white" : ""
+                  }`}
+                  key={`ops-${order.id}`}
+                  onClick={() => setSelectedOrderId(order.id)}
+                  type="button"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-900">
+                        <ReceiptText size={15} className="text-[var(--brand)]" />
+                        {order.id}
+                      </div>
+                      <div className="mt-1 text-sm muted-text">{formatDate(order.createdAt)}</div>
+                      <div className="mt-2 text-xs text-slate-500">
+                        {(order.userDisplayName || "-")} • {(order.userEmail || "-")}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-slate-900">{formatMoney(order.totalCents)}</div>
+                      <div className="mt-1 text-xs uppercase tracking-[0.2em] text-[var(--brand)]">{order.status}</div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="panel-soft rounded-[1.75rem] p-5">
+            {selectedOrderDetailQuery.data ? (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.24em] text-[var(--brand)]">Selected Order</div>
+                    <div className="mt-2 text-xl font-semibold text-slate-950">{selectedOrderDetailQuery.data.id}</div>
+                    <div className="mt-2 text-sm text-slate-600">
+                      {formatMoney(selectedOrderDetailQuery.data.totalCents)} • {selectedOrderDetailQuery.data.paymentMethod}
+                    </div>
+                  </div>
+                  <div className="rounded-full bg-[var(--surface-2)] px-3 py-2 text-xs uppercase tracking-[0.2em] text-slate-700">
+                    {selectedOrderDetailQuery.data.status}
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <button className="secondary-button rounded-full px-4 py-2 text-xs" disabled={orderActionMutation.isPending} onClick={() => void orderActionMutation.mutate({ orderId: selectedOrderDetailQuery.data!.id, action: "manual-review" })} type="button">
+                    ส่งเข้า manual review
+                  </button>
+                  <button className="secondary-button rounded-full px-4 py-2 text-xs" disabled={orderActionMutation.isPending} onClick={() => void orderActionMutation.mutate({ orderId: selectedOrderDetailQuery.data!.id, action: "retry" })} type="button">
+                    retry order
+                  </button>
+                  <button className="secondary-button rounded-full px-4 py-2 text-xs" disabled={orderActionMutation.isPending} onClick={() => void orderActionMutation.mutate({ orderId: selectedOrderDetailQuery.data!.id, action: "manual-fulfill" })} type="button">
+                    ปิดงานด้วยมือ
+                  </button>
+                  <button className="secondary-button rounded-full px-4 py-2 text-xs" disabled={orderActionMutation.isPending} onClick={() => void orderActionMutation.mutate({ orderId: selectedOrderDetailQuery.data!.id, action: "refund" })} type="button">
+                    refund
+                  </button>
+                </div>
+                {orderMessage ? <div className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{orderMessage}</div> : null}
+                {orderError ? <div className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{orderError}</div> : null}
+                <div className="mt-4 grid gap-3">
+                  <div className="rounded-[1.25rem] bg-white/80 px-4 py-3">
+                    <div className="font-medium text-slate-950">Provider Link</div>
+                    <div className="mt-2 text-xs text-slate-600">
+                      {selectedOrderDetailQuery.data.providerLink
+                        ? `${selectedOrderDetailQuery.data.providerLink.providerKey} • ${selectedOrderDetailQuery.data.providerLink.providerOrderId || "-"} • ${selectedOrderDetailQuery.data.providerLink.latestStatus}`
+                        : "ยังไม่มี provider link"}
+                    </div>
+                  </div>
+                  <div className="rounded-[1.25rem] bg-white/80 px-4 py-3">
+                    <div className="font-medium text-slate-950">ฟอร์มที่ลูกค้ากรอก</div>
+                    <pre className="mt-2 overflow-auto rounded-xl bg-slate-950 px-3 py-3 text-xs text-slate-100">{JSON.stringify(selectedOrderDetailQuery.data.formInput, null, 2)}</pre>
+                  </div>
+                  <div className="rounded-[1.25rem] bg-white/80 px-4 py-3">
+                    <div className="font-medium text-slate-950">รายการสินค้าและ delivery payload</div>
+                    <pre className="mt-2 overflow-auto rounded-xl bg-slate-950 px-3 py-3 text-xs text-slate-100">{JSON.stringify(selectedOrderDetailQuery.data.items, null, 2)}</pre>
+                  </div>
+                  <div className="rounded-[1.25rem] bg-white/80 px-4 py-3">
+                    <div className="font-medium text-slate-950">Audit ล่าสุดของออเดอร์นี้</div>
+                    <div className="mt-3 space-y-2">
+                      {selectedOrderDetailQuery.data.audits.slice(0, 6).map((log) => (
+                        <div className="rounded-xl bg-[var(--surface-2)] px-3 py-3 text-xs text-slate-700" key={log.id}>
+                          <div className="font-medium text-slate-900">{log.action}</div>
+                          <div className="mt-1">{log.detail}</div>
+                          <div className="mt-1 text-slate-500">{formatDate(log.createdAt)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="text-sm text-slate-500">เลือกออเดอร์เพื่อเปิดศูนย์จัดการหลังบ้าน</div>
+            )}
+          </div>
+        </div>
+        <div className="mt-4 space-y-3">
+          {auditLogsQuery.data?.slice(0, 8).map((log) => (
+            <div className="panel-soft rounded-[1.5rem] px-4 py-4" key={`audit-${log.id}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-900">{log.entityType} • {log.action}</div>
+                  <div className="mt-2 text-sm muted-text">{log.detail}</div>
+                  <div className="mt-2 text-xs text-slate-500">entity={log.entityId} • actor={log.actorUserId || "system"}</div>
+                </div>
+                <div className="text-xs text-slate-500">{formatDate(log.createdAt)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="panel rounded-[2.5rem] p-6" id="admin-jobs">
         <div className="flex items-center justify-between gap-3">

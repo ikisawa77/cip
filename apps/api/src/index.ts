@@ -56,6 +56,7 @@ import {
   createAdminCategory,
   createAdminInventoryItem,
   countActiveSessions,
+  getAdminAuditLogs,
   createOrder,
   createWalletTopup,
   deleteAdminCategory,
@@ -64,6 +65,7 @@ import {
   getAdminDashboard,
   getAdminInventoryItems,
   getAdminInventorySummary,
+  getAdminOrders,
   getPromptpayConfigForWebhook,
   getAdminPaymentIntents,
   getAdminProviders,
@@ -82,11 +84,13 @@ import {
   applyProviderOrderUpdate,
   processPendingJobs,
   requeueJob,
+  refundOrderByAdmin,
   settlePaymentByReference,
   settlePaymentByReferenceWithAmount,
   settlePaymentIntentById,
   syncEnabledProviders,
   syncProvider,
+  updateAdminOrderStatus,
   updatePaymentIntentStatus,
   upsertFooterContent,
   upsertHomepageContent,
@@ -598,7 +602,13 @@ app.put("/api/admin/products/:id", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
-  res.json(await db.select().from(orders).orderBy(desc(orders.createdAt)));
+  res.json(await getAdminOrders());
+});
+
+app.get("/api/admin/audit-logs", requireAdmin, async (req, res) => {
+  const entityType = typeof req.query.entityType === "string" ? req.query.entityType : undefined;
+  const entityId = typeof req.query.entityId === "string" ? req.query.entityId : undefined;
+  res.json(await getAdminAuditLogs(entityType, entityId));
 });
 
 app.get("/api/admin/payment-intents", requireAdmin, async (_req, res) => {
@@ -730,6 +740,65 @@ app.get("/api/admin/orders/:id", requireAdmin, async (req, res) => {
   }
 
   res.json(order);
+});
+
+app.post("/api/admin/orders/:id/manual-review", requireAdmin, async (req, res) => {
+  try {
+    res.json(
+      await updateAdminOrderStatus(
+        String(req.params.id),
+        "manual_review",
+        req.authUser?.id,
+        typeof req.body.note === "string" ? req.body.note : undefined
+      )
+    );
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "manual review failed" });
+  }
+});
+
+app.post("/api/admin/orders/:id/refund", requireAdmin, async (req, res) => {
+  try {
+    res.json(
+      await refundOrderByAdmin(
+        String(req.params.id),
+        req.authUser?.id,
+        typeof req.body.note === "string" ? req.body.note : undefined
+      )
+    );
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "refund order failed" });
+  }
+});
+
+app.post("/api/admin/orders/:id/manual-fulfill", requireAdmin, async (req, res) => {
+  try {
+    res.json(
+      await updateAdminOrderStatus(
+        String(req.params.id),
+        "fulfilled",
+        req.authUser?.id,
+        typeof req.body.note === "string" ? req.body.note : undefined
+      )
+    );
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "manual fulfill failed" });
+  }
+});
+
+app.post("/api/admin/orders/:id/retry", requireAdmin, async (req, res) => {
+  try {
+    res.json(
+      await updateAdminOrderStatus(
+        String(req.params.id),
+        "processing",
+        req.authUser?.id,
+        typeof req.body.note === "string" ? req.body.note : undefined
+      )
+    );
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "retry order failed" });
+  }
 });
 
 app.post("/api/admin/orders/:id/manual-fulfill", requireAdmin, async (req, res) => {
