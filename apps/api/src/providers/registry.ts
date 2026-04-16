@@ -1,11 +1,11 @@
 import type { ProviderAdapter } from "./types";
 import { createScaffoldAdapter } from "./scaffold";
+import { wepayAdapter } from "./wepay";
 
 export const providerKeys = ["promptpay", "wepay", "24payseller", "peamsub24hr", "kbiz", "truemoney", "rdcw"] as const;
 export type ProviderKey = (typeof providerKeys)[number];
 
 const promptpayAdapter = createScaffoldAdapter("promptpay", "PromptPay");
-const wepayAdapter = createScaffoldAdapter("wepay", "Wepay");
 const pays24SellerAdapter = createScaffoldAdapter("24payseller", "24Payseller");
 const peamsub24hrAdapter = createScaffoldAdapter("peamsub24hr", "Peamsub24hr");
 const walletAdapter = createScaffoldAdapter("kbiz", "K-BIZ / Wallet Matching");
@@ -22,19 +22,24 @@ const providerAdapters: Record<ProviderKey, ProviderAdapter> = {
   rdcw: rdcwAdapter
 };
 
-export function getProviderAdapter(productType?: string | null): ProviderAdapter {
+export function getProviderKeyForProductType(productType?: string | null): ProviderKey | null {
   switch (productType) {
     case "TOPUP_API":
-      return wepayAdapter;
+      return "wepay";
     case "PREMIUM_API":
-      return peamsub24hrAdapter;
+      return "peamsub24hr";
     case "ID_PASS_ORDER":
-      return pays24SellerAdapter;
+      return "24payseller";
     case "WALLET_TOPUP":
-      return walletAdapter;
+      return "kbiz";
     default:
-      return createScaffoldAdapter("manual", "Manual Provider");
+      return null;
   }
+}
+
+export function getProviderAdapter(productType?: string | null): ProviderAdapter {
+  const providerKey = getProviderKeyForProductType(productType);
+  return providerKey ? providerAdapters[providerKey] : createScaffoldAdapter("manual", "Manual Provider");
 }
 
 export function isProviderKey(value: string): value is ProviderKey {

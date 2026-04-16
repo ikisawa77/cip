@@ -16,6 +16,7 @@ import {
   type WalletTopupInput
 } from "@cip/shared";
 
+import { env } from "../config/env";
 import { db } from "../db";
 import {
   auditLogs,
@@ -27,6 +28,7 @@ import {
   orders,
   passwordResetOtps,
   paymentIntents,
+  providerOrderLinks,
   products,
   providerConfigs,
   randomPools,
@@ -37,10 +39,17 @@ import {
   webhookEvents
 } from "../db/schema";
 import { createId } from "../lib/ids";
+import { runKbizStatementImport } from "../lib/kbiz-import";
 import { createPromptpayPayload, createPromptpayQrDataUrl, maskPromptpayReceiver } from "../lib/promptpay";
 import { decryptPayload, encryptPayload } from "../lib/security";
 import { minutesFromNow, now } from "../lib/time";
-import { getProviderAdapter, getProviderAdapterByKey, providerKeys, type ProviderKey } from "../providers/registry";
+import {
+  getProviderAdapter,
+  getProviderAdapterByKey,
+  getProviderKeyForProductType,
+  providerKeys,
+  type ProviderKey
+} from "../providers/registry";
 
 export async function getCatalog() {
   const categoryRows = await db.select().from(categories).orderBy(asc(categories.name));
@@ -69,9 +78,13 @@ export async function getProductBySlug(slug: string) {
   };
 }
 
-async function getPromptpayConfigRow() {
-  const [row] = await db.select().from(providerConfigs).where(eq(providerConfigs.providerKey, "promptpay")).limit(1);
+async function getProviderConfigRow(providerKey: ProviderKey) {
+  const [row] = await db.select().from(providerConfigs).where(eq(providerConfigs.providerKey, providerKey)).limit(1);
   return row ?? null;
+}
+
+async function getPromptpayConfigRow() {
+  return getProviderConfigRow("promptpay");
 }
 
 async function getNormalizedPromptpayConfig() {
@@ -112,6 +125,30 @@ async function getNormalizedPromptpayConfig() {
 export async function getPromptpayConfigForWebhook() {
   const promptpay = await getNormalizedPromptpayConfig();
   return promptpay;
+}
+
+export async function getProviderConfigSnapshot(providerKey: ProviderKey) {
+  const row = await getProviderConfigRow(providerKey);
+
+  if (!row) {
+    return {
+      isEnabled: false,
+      config: {} as Record<string, unknown>
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(row.configJson) as unknown;
+    return {
+      isEnabled: row.isEnabled,
+      config: typeof parsed === "object" && parsed && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
+    };
+  } catch {
+    return {
+      isEnabled: row.isEnabled,
+      config: {} as Record<string, unknown>
+    };
+  }
 }
 
 async function buildPaymentIntentPresentation(intent: typeof paymentIntents.$inferSelect): Promise<PaymentIntentPresentation> {
@@ -932,6 +969,178 @@ export async function upsertAdminProviderConfig(
   await logAudit("provider_config", providerKey, "upsert", `updated provider config enabled=${input.isEnabled}`, input.actorUserId);
 }
 
+async function getProviderPurchaseOrderContext(orderId: string) {
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+  if (!order) {
+    throw new Error(`order not found: ${orderId}`);
+  }
+
+  const [item] = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId)).limit(1);
+  if (!item) {
+    throw new Error(`order item not found: ${orderId}`);
+  }
+
+  const [product] = await db.select().from(products).where(eq(products.id, item.productId)).limit(1);
+  if (!product) {
+    throw new Error(`product not found for order: ${orderId}`);
+  }
+
+  const [inputs] = await db.select().from(orderInputs).where(eq(orderInputs.orderId, orderId)).limit(1);
+  const formInput = inputs ? (JSON.parse(inputs.inputJson) as Record<string, string>) : {};
+
+  return {
+    order,
+    item,
+    product,
+    formInput
+  };
+}
+
+async function upsertProviderOrderLink(input: {
+  orderId: string;
+  providerKey: ProviderKey;
+  providerOrderId?: string | null;
+  latestStatus: string;
+  requestJson?: string | null;
+  latestPayloadJson?: string | null;
+}) {
+  const timestamp = now();
+  const matchByProviderOrderId = input.providerOrderId?.trim() ? input.providerOrderId.trim() : null;
+
+  const [existing] = matchByProviderOrderId
+    ? await db
+        .select()
+        .from(providerOrderLinks)
+        .where(and(eq(providerOrderLinks.providerKey, input.providerKey), eq(providerOrderLinks.providerOrderId, matchByProviderOrderId)))
+        .limit(1)
+    : await db
+        .select()
+        .from(providerOrderLinks)
+        .where(and(eq(providerOrderLinks.providerKey, input.providerKey), eq(providerOrderLinks.orderId, input.orderId)))
+        .limit(1);
+
+  if (existing) {
+    await db
+      .update(providerOrderLinks)
+      .set({
+        providerOrderId: matchByProviderOrderId ?? existing.providerOrderId,
+        latestStatus: input.latestStatus,
+        requestJson: input.requestJson ?? existing.requestJson,
+        latestPayloadJson: input.latestPayloadJson ?? existing.latestPayloadJson,
+        updatedAt: timestamp
+      })
+      .where(eq(providerOrderLinks.id, existing.id));
+
+    return existing.id;
+  }
+
+  const id = createId();
+  await db.insert(providerOrderLinks).values({
+    id,
+    orderId: input.orderId,
+    providerKey: input.providerKey,
+    providerOrderId: matchByProviderOrderId,
+    latestStatus: input.latestStatus,
+    requestJson: input.requestJson ?? null,
+    latestPayloadJson: input.latestPayloadJson ?? null,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  });
+
+  return id;
+}
+
+export async function applyProviderOrderUpdate(input: {
+  providerKey: ProviderKey;
+  orderId?: string | null;
+  providerOrderId?: string | null;
+  status: "processing" | "fulfilled" | "failed" | "manual_review";
+  note?: string | null;
+  payload?: unknown;
+  deliveryPayload?: string | null;
+}) {
+  const providerOrderId = input.providerOrderId?.trim() || null;
+  const directOrderId = input.orderId?.trim() || null;
+
+  const [link] = providerOrderId
+    ? await db
+        .select()
+        .from(providerOrderLinks)
+        .where(and(eq(providerOrderLinks.providerKey, input.providerKey), eq(providerOrderLinks.providerOrderId, providerOrderId)))
+        .limit(1)
+    : directOrderId
+      ? await db
+          .select()
+          .from(providerOrderLinks)
+          .where(and(eq(providerOrderLinks.providerKey, input.providerKey), eq(providerOrderLinks.orderId, directOrderId)))
+          .limit(1)
+      : [];
+
+  const orderId = directOrderId ?? link?.orderId ?? null;
+  if (!orderId) {
+    return {
+      ok: false,
+      message: "order not found"
+    } as const;
+  }
+
+  if (link) {
+    await db
+      .update(providerOrderLinks)
+      .set({
+        latestStatus: input.status,
+        latestPayloadJson: JSON.stringify(input.payload ?? {}),
+        updatedAt: now()
+      })
+      .where(eq(providerOrderLinks.id, link.id));
+  } else {
+    await upsertProviderOrderLink({
+      orderId,
+      providerKey: input.providerKey,
+      providerOrderId,
+      latestStatus: input.status,
+      latestPayloadJson: JSON.stringify(input.payload ?? {})
+    });
+  }
+
+  if (input.deliveryPayload?.trim()) {
+    const [item] = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId)).limit(1);
+    if (item) {
+      await db.update(orderItems).set({ deliveryPayload: input.deliveryPayload.trim() }).where(eq(orderItems.id, item.id));
+    }
+  }
+
+  const noteParts = [input.note?.trim() || null, providerOrderId ? `ref=${providerOrderId}` : null].filter(Boolean);
+  await db
+    .update(orders)
+    .set({
+      status: input.status,
+      notes: noteParts.join(" | ") || null,
+      updatedAt: now()
+    })
+    .where(eq(orders.id, orderId));
+
+  await db.insert(webhookEvents).values({
+    id: createId(),
+    providerKey: input.providerKey,
+    eventType: "provider.order_update",
+    payloadJson: JSON.stringify({
+      orderId,
+      providerOrderId,
+      status: input.status,
+      note: input.note ?? null,
+      payload: input.payload ?? {}
+    }),
+    processed: true,
+    createdAt: now()
+  });
+
+  return {
+    ok: true,
+    orderId
+  } as const;
+}
+
 export async function syncProvider(providerKey: ProviderKey) {
   const [config] = await db.select().from(providerConfigs).where(eq(providerConfigs.providerKey, providerKey)).limit(1);
 
@@ -940,6 +1149,15 @@ export async function syncProvider(providerKey: ProviderKey) {
       providerKey,
       ok: false,
       note: "provider disabled"
+    };
+  }
+
+  if (providerKey === "kbiz") {
+    const result = await runKbizStatementImport(matchPromptpayTransactions);
+    return {
+      providerKey,
+      ok: result.ok,
+      note: `${result.note} | imported=${result.imported} matched=${result.matched} unmatched=${result.unmatched}`
     };
   }
 
@@ -981,22 +1199,88 @@ export async function processPendingJobs() {
   for (const job of pending.slice(0, 20)) {
     await db.update(jobs).set({ status: "processing", attempts: job.attempts + 1, updatedAt: now() }).where(eq(jobs.id, job.id));
 
-    const payload = JSON.parse(job.payloadJson) as { orderId?: string; productType?: string };
-    if (job.kind === "provider_purchase" && payload.orderId) {
-      const adapter = getProviderAdapter(payload.productType);
-      const result = await adapter.purchase({ orderId: payload.orderId, payload });
+    try {
+      const payload = JSON.parse(job.payloadJson) as { orderId?: string; productType?: string };
+      if (job.kind === "provider_purchase" && payload.orderId) {
+        const providerKey = getProviderKeyForProductType(payload.productType);
+        const adapter = getProviderAdapter(payload.productType);
+        const providerConfig = providerKey ? await getProviderConfigSnapshot(providerKey) : { isEnabled: false, config: {} };
+        const orderContext = await getProviderPurchaseOrderContext(payload.orderId);
+        const result = await adapter.purchase({
+          orderId: payload.orderId,
+          payload,
+          config: providerConfig.config,
+          order: {
+            totalCents: orderContext.order.totalCents,
+            paymentMethod: orderContext.order.paymentMethod
+          },
+          item: {
+            productId: orderContext.item.productId,
+            quantity: orderContext.item.quantity,
+            unitPriceCents: orderContext.item.unitPriceCents
+          },
+          product: {
+            name: orderContext.product.name,
+            slug: orderContext.product.slug,
+            type: orderContext.product.type
+          },
+          formInput: orderContext.formInput,
+          callbackUrl: `${env.apiUrl}/api/webhooks/${providerKey ?? "manual"}/order-update`
+        });
+
+        if (providerKey) {
+          await upsertProviderOrderLink({
+            orderId: payload.orderId,
+            providerKey,
+            providerOrderId: result.providerOrderId,
+            latestStatus: result.externalStatus ?? result.status,
+            requestJson: result.requestPayload ? JSON.stringify(result.requestPayload) : null,
+            latestPayloadJson: result.responsePayload ? JSON.stringify(result.responsePayload) : null
+          });
+        }
+
+        if (result.deliveryPayload?.trim()) {
+          await db
+            .update(orderItems)
+            .set({ deliveryPayload: result.deliveryPayload.trim() })
+            .where(eq(orderItems.id, orderContext.item.id));
+        }
+
+        await db
+          .update(orders)
+          .set({
+            status: result.status,
+            notes: result.note,
+            updatedAt: now()
+          })
+          .where(eq(orders.id, payload.orderId));
+      }
+
+      await db.update(jobs).set({ status: "completed", updatedAt: now(), lastError: null }).where(eq(jobs.id, job.id));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown job error";
+      const payload = JSON.parse(job.payloadJson) as { orderId?: string };
+
+      if (payload.orderId) {
+        await db
+          .update(orders)
+          .set({
+            status: "manual_review",
+            notes: `provider job failed | ${message}`,
+            updatedAt: now()
+          })
+          .where(eq(orders.id, payload.orderId));
+      }
 
       await db
-        .update(orders)
+        .update(jobs)
         .set({
-          status: result.status,
-          notes: result.note,
-          updatedAt: now()
+          status: "failed",
+          updatedAt: now(),
+          lastError: message
         })
-        .where(eq(orders.id, payload.orderId));
+        .where(eq(jobs.id, job.id));
     }
-
-    await db.update(jobs).set({ status: "completed", updatedAt: now(), lastError: null }).where(eq(jobs.id, job.id));
   }
 
   return pending.length;

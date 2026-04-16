@@ -149,6 +149,40 @@ const emptyCategoryForm = {
   icon: ""
 };
 
+const providerConfigExamples: Record<string, { title: string; description: string; value: Record<string, unknown> }> = {
+  promptpay: {
+    title: "ตัวอย่าง config สำหรับ PromptPay",
+    description: "ใช้ provider นี้สำหรับสร้าง QR รับเงินจริงบนหน้า `/topup` และ `/product/:slug`",
+    value: promptpayConfigDefaults
+  },
+  kbiz: {
+    title: "ตัวอย่าง config สำหรับ K-Biz statement bridge",
+    description: "ตั้ง sourceDir ให้ชี้ไปโฟลเดอร์ export statement และใส่ archiveDir ถ้าต้องการย้ายไฟล์ที่ import แล้ว",
+    value: {
+      sourceDir: "C:\\\\bank-export\\\\kbiz",
+      archiveDir: "C:\\\\bank-export\\\\kbiz\\\\processed",
+      filePattern: "kbiz.*\\.(csv|json)$",
+      maxFiles: 5
+    }
+  },
+  wepay: {
+    title: "ตัวอย่าง config สำหรับ Wepay bridge",
+    description: "รองรับทั้งโหมด webhook จริงและโหมด instant สำหรับทดสอบ flow provider order",
+    value: {
+      mode: "webhook",
+      endpoint: "https://provider.example.com/api/orders",
+      method: "POST",
+      apiKey: "replace-me",
+      authHeaderName: "Authorization",
+      authScheme: "Bearer",
+      callbackSecret: "wepay-dev-secret",
+      staticPayload: {
+        channel: "cip-store"
+      }
+    }
+  }
+};
+
 const emptyInventoryForm = {
   id: null as string | null,
   productId: "",
@@ -2054,15 +2088,15 @@ export function AdminPage() {
           {selectedProvider ? (
             <div className="mt-4 rounded-[1.5rem] bg-[var(--text)] px-4 py-4 text-sm text-slate-100">
               <div>กำลังแก้ไข: {selectedProvider}</div>
-              {selectedProvider === "promptpay" ? (
-                <div className="mt-4 rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-4 text-xs leading-7 text-slate-200">
-                  <div className="font-semibold text-white">ตัวอย่าง config สำหรับ PromptPay</div>
-                  <div className="mt-2">ใช้ provider นี้สำหรับสร้าง QR รับเงินจริงบนหน้า `/topup` และ `/product/:slug`</div>
-                  <pre className="mt-3 overflow-auto rounded-[1rem] bg-slate-950/55 px-4 py-3 text-[11px] text-slate-100">
-                    {JSON.stringify(promptpayConfigDefaults, null, 2)}
-                  </pre>
-                </div>
-              ) : null}
+                {providerConfigExamples[selectedProvider] ? (
+                  <div className="mt-4 rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-4 text-xs leading-7 text-slate-200">
+                    <div className="font-semibold text-white">{providerConfigExamples[selectedProvider].title}</div>
+                    <div className="mt-2">{providerConfigExamples[selectedProvider].description}</div>
+                    <pre className="mt-3 overflow-auto rounded-[1rem] bg-slate-950/55 px-4 py-3 text-[11px] text-slate-100">
+                      {JSON.stringify(providerConfigExamples[selectedProvider].value, null, 2)}
+                    </pre>
+                  </div>
+                ) : null}
               <label className="mt-4 flex items-center gap-3 text-sm">
                 <input checked={providerEnabled} onChange={(event) => setProviderEnabled(event.target.checked)} type="checkbox" />
                 เปิดใช้งาน provider นี้
@@ -2142,7 +2176,7 @@ export function AdminPage() {
                     <button
                       className="secondary-button rounded-full px-4 py-2 text-xs"
                       onClick={() => {
-                        const command = `corepack pnpm --filter @cip/api webhook:promptpay --payment-intent-id ${intent.id}`;
+                          const command = `pnpm --filter @cip/api webhook:promptpay --payment-intent-id ${intent.id}`;
                         void navigator.clipboard.writeText(command);
                         setPaymentError(null);
                         setPaymentMessage(`คัดลอกคำสั่งยิง signed webhook สำหรับ ${intent.referenceCode} แล้ว`);
@@ -2199,7 +2233,7 @@ export function AdminPage() {
                 <button
                   className="secondary-button rounded-full px-4 py-2 text-xs"
                   onClick={() => {
-                    const command = "corepack pnpm --filter @cip/api match:promptpay --file .\\\\transactions.json";
+                      const command = "pnpm --filter @cip/api match:promptpay --file .\\\\transactions.json";
                     void navigator.clipboard.writeText(command);
                     setPaymentError(null);
                     setPaymentMessage("คัดลอกคำสั่ง matcher สำหรับเครื่องช่วยหรือ cron แล้ว");

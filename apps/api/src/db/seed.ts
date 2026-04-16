@@ -13,14 +13,16 @@ import {
   orderInputs,
   orderItems,
   orders,
-  passwordResetOtps,
-  paymentIntents,
-  productVariants,
-  products,
-  providerConfigs,
-  randomPools,
-  sessions,
-  siteContents,
+    passwordResetOtps,
+    paymentIntents,
+    providerOrderLinks,
+    productVariants,
+    products,
+    providerConfigs,
+    providerSyncFiles,
+    randomPools,
+    sessions,
+    siteContents,
   users,
   walletTransactions,
   webhookEvents
@@ -35,6 +37,8 @@ async function main() {
   await db.delete(webhookEvents);
   await db.delete(walletTransactions);
   await db.delete(paymentIntents);
+  await db.delete(providerOrderLinks);
+  await db.delete(providerSyncFiles);
   await db.delete(orderInputs);
   await db.delete(orderItems);
   await db.delete(orders);

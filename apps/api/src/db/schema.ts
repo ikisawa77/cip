@@ -209,6 +209,32 @@ export const providerConfigs = mysqlTable("provider_configs", {
   updatedAt: datetime("updated_at").notNull()
 });
 
+export const providerOrderLinks = mysqlTable(
+  "provider_order_links",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    orderId: varchar("order_id", { length: 36 }).notNull(),
+    providerKey: mysqlEnum("provider_key", [
+      "promptpay",
+      "wepay",
+      "24payseller",
+      "peamsub24hr",
+      "kbiz",
+      "truemoney",
+      "rdcw"
+    ]).notNull(),
+    providerOrderId: varchar("provider_order_id", { length: 191 }),
+    latestStatus: varchar("latest_status", { length: 80 }).notNull(),
+    requestJson: text("request_json"),
+    latestPayloadJson: text("latest_payload_json"),
+    createdAt: datetime("created_at").notNull(),
+    updatedAt: datetime("updated_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("provider_order_links_provider_order_unique").on(table.providerKey, table.providerOrderId)
+  ]
+);
+
 export const webhookEvents = mysqlTable("webhook_events", {
   id: varchar("id", { length: 36 }).primaryKey(),
   providerKey: varchar("provider_key", { length: 60 }).notNull(),
@@ -217,6 +243,28 @@ export const webhookEvents = mysqlTable("webhook_events", {
   processed: boolean("processed").notNull().default(false),
   createdAt: datetime("created_at").notNull()
 });
+
+export const providerSyncFiles = mysqlTable(
+  "provider_sync_files",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    providerKey: mysqlEnum("provider_key", [
+      "promptpay",
+      "wepay",
+      "24payseller",
+      "peamsub24hr",
+      "kbiz",
+      "truemoney",
+      "rdcw"
+    ]).notNull(),
+    filePath: varchar("file_path", { length: 255 }).notNull(),
+    fileSignature: varchar("file_signature", { length: 191 }).notNull(),
+    importedAt: datetime("imported_at").notNull(),
+    sourceCreatedAt: datetime("source_created_at"),
+    payloadJson: text("payload_json").notNull()
+  },
+  (table) => [uniqueIndex("provider_sync_files_signature_unique").on(table.providerKey, table.fileSignature)]
+);
 
 export const jobs = mysqlTable("jobs", {
   id: varchar("id", { length: 36 }).primaryKey(),

@@ -49,6 +49,7 @@ import { sendOtpEmail } from "./lib/mailer";
 import { verifyWebhookSignature } from "./lib/security";
 import { minutesFromNow, now } from "./lib/time";
 import { isProviderKey } from "./providers/registry";
+import { mapWepayStatus } from "./providers/wepay";
 import {
   cleanupExpiredOtps,
   cleanupExpiredPaymentIntents,
@@ -73,10 +74,12 @@ import {
   getOrderForUser,
   getOrdersForUser,
   getPaymentIntentPresentation,
+  getProviderConfigSnapshot,
   getProductBySlug,
   getWalletTransactionsForUser,
   importInventoryBatch,
   matchPromptpayTransactions,
+  applyProviderOrderUpdate,
   processPendingJobs,
   requeueJob,
   settlePaymentByReference,
@@ -876,6 +879,39 @@ app.post("/api/webhooks/wepay", async (req, res) => {
   }
 
   res.json({ ok: await settlePaymentByReference(referenceCode, "wepay", req.body) });
+});
+
+app.post("/api/webhooks/wepay/order-update", async (req, res) => {
+  const wepay = await getProviderConfigSnapshot("wepay");
+  const configuredSecret =
+    typeof wepay.config.callbackSecret === "string" && wepay.config.callbackSecret.trim()
+      ? wepay.config.callbackSecret.trim()
+      : null;
+  const suppliedSecret = String(req.header("x-provider-secret") ?? req.body.callbackSecret ?? "");
+
+  if (configuredSecret && suppliedSecret !== configuredSecret) {
+    res.status(403).json({ message: "invalid callback secret" });
+    return;
+  }
+
+  const rawStatus = String(req.body.status ?? "").trim();
+  if (!rawStatus) {
+    res.status(400).json({ message: "missing status" });
+    return;
+  }
+  const status = mapWepayStatus(rawStatus);
+
+  const result = await applyProviderOrderUpdate({
+    providerKey: "wepay",
+    orderId: typeof req.body.orderId === "string" ? req.body.orderId : null,
+    providerOrderId: typeof req.body.providerOrderId === "string" ? req.body.providerOrderId : null,
+    status,
+    note: typeof req.body.note === "string" ? req.body.note : `Wepay callback status=${rawStatus}`,
+    payload: { ...req.body, normalizedStatus: status },
+    deliveryPayload: typeof req.body.deliveryPayload === "string" ? req.body.deliveryPayload : null
+  });
+
+  res.status(result.ok ? 200 : 404).json(result);
 });
 
 app.post("/api/webhooks/promptpay", async (req, res) => {
