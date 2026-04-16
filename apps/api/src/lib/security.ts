@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { env } from "../config/env";
 
@@ -23,4 +23,20 @@ export function decryptPayload(value: string) {
   ]);
 
   return decrypted.toString("utf8");
+}
+
+export function signWebhookPayload(secret: string, timestamp: string, rawBody: string) {
+  return createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
+}
+
+export function verifyWebhookSignature(secret: string, timestamp: string, rawBody: string, signature: string) {
+  const expected = signWebhookPayload(secret, timestamp, rawBody);
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  const actualBuffer = Buffer.from(signature, "utf8");
+
+  if (expectedBuffer.length !== actualBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(expectedBuffer, actualBuffer);
 }

@@ -5,9 +5,13 @@ import {
   footerContentSchema,
   homepageContentDefaults,
   homepageContentSchema,
+  paymentIntentPresentationSchema,
+  promptpayConfigDefaults,
+  promptpayConfigSchema,
   type CreateOrderInput,
   type FooterContent,
   type HomepageContent,
+  type PaymentIntentPresentation,
   type ProductType,
   type WalletTopupInput
 } from "@cip/shared";
@@ -33,6 +37,7 @@ import {
   webhookEvents
 } from "../db/schema";
 import { createId } from "../lib/ids";
+import { createPromptpayPayload, createPromptpayQrDataUrl, maskPromptpayReceiver } from "../lib/promptpay";
 import { decryptPayload, encryptPayload } from "../lib/security";
 import { minutesFromNow, now } from "../lib/time";
 import { getProviderAdapter, getProviderAdapterByKey, providerKeys, type ProviderKey } from "../providers/registry";
@@ -62,6 +67,95 @@ export async function getProductBySlug(slug: string) {
     ...product,
     availableStock: Number(stockRow?.available ?? 0)
   };
+}
+
+async function getPromptpayConfigRow() {
+  const [row] = await db.select().from(providerConfigs).where(eq(providerConfigs.providerKey, "promptpay")).limit(1);
+  return row ?? null;
+}
+
+async function getNormalizedPromptpayConfig() {
+  const row = await getPromptpayConfigRow();
+  if (!row || !row.isEnabled) {
+    return {
+      isConfigured: false,
+      config: promptpayConfigDefaults
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(row.configJson) as unknown;
+    const result = promptpayConfigSchema.safeParse({
+      ...promptpayConfigDefaults,
+      ...(typeof parsed === "object" && parsed ? parsed : {})
+    });
+
+    if (!result.success) {
+      return {
+        isConfigured: false,
+        config: promptpayConfigDefaults
+      };
+    }
+
+    return {
+      isConfigured: true,
+      config: result.data
+    };
+  } catch {
+    return {
+      isConfigured: false,
+      config: promptpayConfigDefaults
+    };
+  }
+}
+
+export async function getPromptpayConfigForWebhook() {
+  const promptpay = await getNormalizedPromptpayConfig();
+  return promptpay;
+}
+
+async function buildPaymentIntentPresentation(intent: typeof paymentIntents.$inferSelect): Promise<PaymentIntentPresentation> {
+  if (intent.provider !== "promptpay_qr") {
+    return paymentIntentPresentationSchema.parse({
+      id: intent.id,
+      provider: intent.provider,
+      status: intent.status,
+      amountCents: intent.amountCents,
+      uniqueAmountCents: intent.uniqueAmountCents,
+      referenceCode: intent.referenceCode,
+      expiresAt: intent.expiresAt.toISOString(),
+      paidAt: intent.paidAt?.toISOString() ?? null,
+      promptpay: null
+    });
+  }
+
+  const promptpay = await getNormalizedPromptpayConfig();
+  const promptpayPayload = createPromptpayPayload(promptpay.config, intent.uniqueAmountCents, intent.referenceCode);
+  const qrDataUrl = promptpayPayload ? await createPromptpayQrDataUrl(promptpayPayload) : null;
+
+  return paymentIntentPresentationSchema.parse({
+    id: intent.id,
+    provider: intent.provider,
+    status: intent.status,
+    amountCents: intent.amountCents,
+    uniqueAmountCents: intent.uniqueAmountCents,
+    referenceCode: intent.referenceCode,
+    expiresAt: intent.expiresAt.toISOString(),
+    paidAt: intent.paidAt?.toISOString() ?? null,
+    promptpay: {
+      isConfigured: promptpay.isConfigured,
+      merchantName: promptpay.config.merchantName,
+      merchantCity: promptpay.config.merchantCity,
+      accountLabel: promptpay.config.accountLabel,
+      instructions: promptpay.isConfigured
+        ? promptpay.config.instructions
+        : "กำลังใช้ QR ตัวอย่างสำหรับ localhost กรุณาไปที่หลังบ้าน > Provider > promptpay แล้วใส่เลขรับเงินจริงก่อนเปิดขายจริง",
+      receiverType: promptpay.config.receiverType,
+      receiverHint: maskPromptpayReceiver(promptpay.config.receiverType, promptpay.config.receiver),
+      qrPayload: promptpayPayload,
+      qrDataUrl
+    }
+  });
 }
 
 async function logAudit(entityType: string, entityId: string, action: string, detail: string, actorUserId?: string) {
@@ -180,6 +274,17 @@ async function completeWalletTopup(intentId: string) {
   });
 
   await logAudit("payment_intent", intent.id, "topup_completed", "Webhook ยืนยันการเติมเงิน");
+}
+
+async function markOrderPaymentIssue(orderId: string, nextStatus: "failed" | "manual_review", note: string) {
+  await db
+    .update(orders)
+    .set({
+      status: nextStatus,
+      notes: note,
+      updatedAt: now()
+    })
+    .where(eq(orders.id, orderId));
 }
 
 async function processOrderFulfillment(orderId: string) {
@@ -450,6 +555,235 @@ export async function getWalletTransactionsForUser(userId: string) {
     .orderBy(desc(walletTransactions.createdAt));
 }
 
+export async function getPaymentIntentPresentation(paymentIntentId: string, userId: string, isAdmin = false) {
+  const filter = isAdmin
+    ? eq(paymentIntents.id, paymentIntentId)
+    : and(eq(paymentIntents.id, paymentIntentId), eq(paymentIntents.userId, userId));
+  const [intent] = await db.select().from(paymentIntents).where(filter).limit(1);
+
+  if (!intent) {
+    return null;
+  }
+
+  return buildPaymentIntentPresentation(intent);
+}
+
+export async function getAdminPaymentIntents() {
+  const intentRows = await db.select().from(paymentIntents).orderBy(desc(paymentIntents.createdAt));
+
+  const userIds = Array.from(new Set(intentRows.map((row) => row.userId)));
+  const userRows =
+    userIds.length > 0
+      ? await db
+          .select({
+            id: users.id,
+            email: users.email,
+            displayName: users.displayName
+          })
+          .from(users)
+          .where(inArray(users.id, userIds))
+      : [];
+  const userMap = new Map(userRows.map((row) => [row.id, row]));
+
+  return Promise.all(
+    intentRows.map(async (intent) => {
+      const presentation = await buildPaymentIntentPresentation(intent);
+      const owner = userMap.get(intent.userId);
+
+      return {
+        ...presentation,
+        userId: intent.userId,
+        userEmail: owner?.email ?? "-",
+        userDisplayName: owner?.displayName ?? "-",
+        targetType: intent.targetType,
+        targetId: intent.targetId,
+        createdAt: intent.createdAt.toISOString()
+      };
+    })
+  );
+}
+
+type MatchablePromptpayTransaction = {
+  transactionId?: string | null;
+  amountCents: number;
+  occurredAt?: string | null;
+  referenceCode?: string | null;
+  note?: string | null;
+};
+
+export async function matchPromptpayTransactions(
+  transactions: MatchablePromptpayTransaction[],
+  actorUserId?: string
+) {
+  const pendingIntents = await db
+    .select()
+    .from(paymentIntents)
+    .where(and(eq(paymentIntents.provider, "promptpay_qr"), eq(paymentIntents.status, "pending")))
+    .orderBy(asc(paymentIntents.createdAt));
+
+  const results: Array<{
+    transactionId: string;
+    amountCents: number;
+    matched: boolean;
+    reason: string;
+    paymentIntentId: string | null;
+    referenceCode: string | null;
+  }> = [];
+  const consumedIntentIds = new Set<string>();
+
+  for (const [index, transaction] of transactions.entries()) {
+    const transactionId = transaction.transactionId?.trim() || `txn-${index + 1}`;
+    const amountCents = Math.round(transaction.amountCents);
+    const occurredAt = transaction.occurredAt ? new Date(transaction.occurredAt) : null;
+    const referenceHint = transaction.referenceCode?.trim() || null;
+
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      results.push({
+        transactionId,
+        amountCents,
+        matched: false,
+        reason: "invalid amount",
+        paymentIntentId: null,
+        referenceCode: null
+      });
+      continue;
+    }
+
+    const candidates = pendingIntents.filter((intent) => {
+      if (consumedIntentIds.has(intent.id)) {
+        return false;
+      }
+
+      if (intent.uniqueAmountCents !== amountCents) {
+        return false;
+      }
+
+      if (referenceHint && intent.referenceCode !== referenceHint) {
+        return false;
+      }
+
+      if (!occurredAt) {
+        return true;
+      }
+
+      return intent.createdAt <= occurredAt && occurredAt <= new Date(intent.expiresAt.getTime() + 10 * 60_000);
+    });
+
+    if (candidates.length !== 1) {
+      results.push({
+        transactionId,
+        amountCents,
+        matched: false,
+        reason: candidates.length === 0 ? "no matching payment intent" : "ambiguous match",
+        paymentIntentId: null,
+        referenceCode: referenceHint
+      });
+      continue;
+    }
+
+    const candidate = candidates[0];
+    const settleResult = await settlePaymentByReference(candidate.referenceCode, "promptpay_matcher", {
+      source: "promptpay-matcher",
+      transactionId,
+      note: transaction.note ?? null,
+      occurredAt: transaction.occurredAt ?? null
+    });
+
+    consumedIntentIds.add(candidate.id);
+
+    results.push({
+      transactionId,
+      amountCents,
+      matched: settleResult,
+      reason: settleResult ? "matched" : "unable to settle",
+      paymentIntentId: candidate.id,
+      referenceCode: candidate.referenceCode
+    });
+  }
+
+  await db.insert(webhookEvents).values({
+    id: createId(),
+    providerKey: "promptpay_matcher",
+    eventType: "payment.match.batch",
+    payloadJson: JSON.stringify({ transactions, results }),
+    processed: true,
+    createdAt: now()
+  });
+
+  await logAudit(
+    "payment_intent",
+    "promptpay_matcher",
+    "match_batch",
+    `จับคู่ธุรกรรม ${transactions.length} รายการ | matched=${results.filter((item) => item.matched).length}`,
+    actorUserId
+  );
+
+  return {
+    total: transactions.length,
+    matched: results.filter((item) => item.matched).length,
+    unmatched: results.filter((item) => !item.matched).length,
+    results
+  };
+}
+
+export async function updatePaymentIntentStatus(
+  paymentIntentId: string,
+  nextStatus: "paid" | "failed" | "expired",
+  actorUserId?: string,
+  note?: string
+) {
+  const [intent] = await db.select().from(paymentIntents).where(eq(paymentIntents.id, paymentIntentId)).limit(1);
+  if (!intent) {
+    throw new Error("ไม่พบ payment intent ที่ต้องการจัดการ");
+  }
+
+  if (nextStatus === "paid") {
+    const settled = await settlePaymentByReference(intent.referenceCode, "promptpay", {
+      source: "admin-manual",
+      note: note ?? null
+    });
+
+    if (!settled) {
+      throw new Error("ไม่สามารถยืนยันการชำระเงินรายการนี้ได้");
+    }
+
+    await logAudit("payment_intent", intent.id, "mark_paid", `ยืนยันชำระจากหลังบ้าน${note ? ` | ${note}` : ""}`, actorUserId);
+    return getPaymentIntentPresentation(intent.id, intent.userId, true);
+  }
+
+  if (intent.status === "paid") {
+    throw new Error("รายการนี้ชำระแล้ว จึงเปลี่ยนเป็น failed หรือ expired ไม่ได้");
+  }
+
+  await db
+    .update(paymentIntents)
+    .set({
+      status: nextStatus,
+      paidAt: null
+    })
+    .where(eq(paymentIntents.id, intent.id));
+
+  if (intent.targetType === "order") {
+    await markOrderPaymentIssue(
+      intent.targetId,
+      "failed",
+      nextStatus === "expired"
+        ? note ?? "Payment intent หมดอายุจากหลังบ้าน"
+        : note ?? "Payment intent ถูกทำเครื่องหมายว่า failed จากหลังบ้าน"
+    );
+  }
+
+  await logAudit(
+    "payment_intent",
+    intent.id,
+    nextStatus === "expired" ? "mark_expired" : "mark_failed",
+    `${nextStatus} จากหลังบ้าน${note ? ` | ${note}` : ""}`,
+    actorUserId
+  );
+
+  return getPaymentIntentPresentation(intent.id, intent.userId, true);
+}
+
 export async function settlePaymentByReference(referenceCode: string, providerKey: string, payload: unknown) {
   const [intent] = await db
     .select()
@@ -485,6 +819,36 @@ export async function settlePaymentByReference(referenceCode: string, providerKe
 
   await markOrderPaid(intent.targetId);
   return true;
+}
+
+export async function settlePaymentByReferenceWithAmount(
+  referenceCode: string,
+  providerKey: string,
+  amountCents: number,
+  payload: unknown
+) {
+  const [intent] = await db
+    .select()
+    .from(paymentIntents)
+    .where(eq(paymentIntents.referenceCode, referenceCode))
+    .limit(1);
+
+  if (!intent) {
+    return { ok: false, message: "payment intent not found" } as const;
+  }
+
+  if (intent.uniqueAmountCents !== amountCents) {
+    return {
+      ok: false,
+      message: `amount mismatch expected=${intent.uniqueAmountCents} received=${amountCents}`
+    } as const;
+  }
+
+  const settled = await settlePaymentByReference(referenceCode, providerKey, payload);
+  return {
+    ok: settled,
+    message: settled ? "settled" : "unable to settle"
+  } as const;
 }
 
 export async function settlePaymentIntentById(paymentIntentId: string, providerKey: string, payload: unknown = { source: "dev" }) {
@@ -636,6 +1000,31 @@ export async function processPendingJobs() {
   }
 
   return pending.length;
+}
+
+export async function cleanupExpiredPaymentIntents() {
+  const expiredIntents = await db
+    .select()
+    .from(paymentIntents)
+    .where(and(eq(paymentIntents.status, "pending"), sql`${paymentIntents.expiresAt} < now()`));
+
+  for (const intent of expiredIntents) {
+    await db
+      .update(paymentIntents)
+      .set({
+        status: "expired",
+        paidAt: null
+      })
+      .where(eq(paymentIntents.id, intent.id));
+
+    if (intent.targetType === "order") {
+      await markOrderPaymentIssue(intent.targetId, "failed", "Payment intent หมดอายุอัตโนมัติจาก cron");
+    }
+
+    await logAudit("payment_intent", intent.id, "auto_expire", "cron ทำเครื่องหมาย payment intent หมดอายุ");
+  }
+
+  return expiredIntents.length;
 }
 
 export async function cleanupExpiredOtps() {

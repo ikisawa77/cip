@@ -22,6 +22,7 @@ export const orderStatuses = [
 ] as const;
 
 export const providerKeys = [
+  "promptpay",
   "wepay",
   "24payseller",
   "peamsub24hr",
@@ -145,6 +146,48 @@ export const footerContentSchema = z.object({
   copyright: z.string().min(1),
 });
 
+export const promptpayReceiverTypeSchema = z.enum(["phone", "nationalId", "taxId"]);
+
+export const promptpayConfigSchema = z.object({
+  receiverType: promptpayReceiverTypeSchema,
+  receiver: z.string().min(6),
+  merchantName: z.string().min(2).max(25),
+  merchantCity: z.string().min(2).max(15).default("BANGKOK"),
+  instructions: z.string().min(2).max(240).default("สแกน QR นี้จากแอปธนาคารเพื่อชำระเงิน"),
+  accountLabel: z.string().min(2).max(120).default("บัญชี PromptPay ของร้าน"),
+  webhookSecret: z.string().min(8).max(255).default("promptpay-dev-secret"),
+  webhookNotes: z
+    .string()
+    .min(2)
+    .max(240)
+    .default("ส่ง POST มาที่ /api/webhooks/promptpay พร้อม header x-cip-signature และ x-cip-timestamp")
+});
+
+export const paymentIntentPresentationSchema = z.object({
+  id: z.string(),
+  provider: z.enum(["promptpay_qr", "kbiz_match", "truemoney_gift"]),
+  status: z.enum(["pending", "paid", "expired", "failed"]),
+  amountCents: z.number().int().nonnegative(),
+  uniqueAmountCents: z.number().int().nonnegative(),
+  referenceCode: z.string(),
+  expiresAt: z.string(),
+  paidAt: z.string().nullable().default(null),
+  promptpay: z
+    .object({
+      isConfigured: z.boolean(),
+      merchantName: z.string(),
+      merchantCity: z.string(),
+      accountLabel: z.string(),
+      instructions: z.string(),
+      receiverType: promptpayReceiverTypeSchema,
+      receiverHint: z.string(),
+      qrPayload: z.string().nullable(),
+      qrDataUrl: z.string().nullable()
+    })
+    .nullable()
+    .default(null)
+});
+
 export const homepageContentDefaults = {
   heroBadge: "หน้าร้านแยกหมวดหมู่ชัด และมีหน้าเติมเงินพร้อมใช้",
   heroTitle: "เลือกหมวดสินค้าได้เร็ว เติมเงินได้สะดวก และพร้อมซื้อภายในไม่กี่คลิก",
@@ -208,6 +251,17 @@ export const footerContentDefaults = {
   copyright: "CIP Game Shop · Prompt UI Commerce Experience",
 } satisfies z.infer<typeof footerContentSchema>;
 
+export const promptpayConfigDefaults = {
+  receiverType: "phone",
+  receiver: "0000000000",
+  merchantName: "CIP SHOP",
+  merchantCity: "BANGKOK",
+  instructions: "สแกน QR นี้จากแอปธนาคารเพื่อชำระเงิน จากนั้นรอระบบหรือแอดมินยืนยันรายการ",
+  accountLabel: "บัญชี PromptPay ของร้าน",
+  webhookSecret: "promptpay-dev-secret",
+  webhookNotes: "ส่ง POST มาที่ /api/webhooks/promptpay พร้อม header x-cip-signature และ x-cip-timestamp"
+} satisfies z.infer<typeof promptpayConfigSchema>;
+
 export const walletTopupSchema = z.object({
   amountBaht: z.number().positive(),
   method: z.enum(["promptpay_qr", "truemoney_gift", "kbiz_match"]),
@@ -236,5 +290,8 @@ export type HomepageSupportCard = z.infer<typeof homepageSupportCardSchema>;
 export type HomepageContent = z.infer<typeof homepageContentSchema>;
 export type FooterLink = z.infer<typeof footerLinkSchema>;
 export type FooterContent = z.infer<typeof footerContentSchema>;
+export type PromptpayReceiverType = z.infer<typeof promptpayReceiverTypeSchema>;
+export type PromptpayConfig = z.infer<typeof promptpayConfigSchema>;
+export type PaymentIntentPresentation = z.infer<typeof paymentIntentPresentationSchema>;
 export type WalletTopupInput = z.infer<typeof walletTopupSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;

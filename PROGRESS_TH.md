@@ -1,22 +1,26 @@
 # ความคืบหน้า
 
 ## รอบล่าสุด
-- เพิ่มระบบ content block สำหรับหน้าแรกและ footer ใน [D:\cip\packages\shared\src\index.ts](D:\cip\packages\shared\src\index.ts)
-- ขยาย service และ API ใน [D:\cip\apps\api\src\services\store.ts](D:\cip\apps\api\src\services\store.ts) และ [D:\cip\apps\api\src\index.ts](D:\cip\apps\api\src\index.ts) ให้รองรับ `homepage` และ `footer` content ผ่าน `site_contents`
-- เพิ่มการ seed ค่าเริ่มต้นของหน้าแรกและ footer ใน [D:\cip\apps\api\src\db\seed.ts](D:\cip\apps\api\src\db\seed.ts)
-- ปรับ [D:\cip\apps\web\src\pages\HomePage.tsx](D:\cip\apps\web\src\pages\HomePage.tsx) ให้ดึงข้อความหน้าแรกจากระบบจริง แทนการ hardcode
-- ยก [D:\cip\apps\web\src\components\Layout.tsx](D:\cip\apps\web\src\components\Layout.tsx) ใหม่ให้มี footer แบบพรีเมียม พร้อมลิงก์, status pills และกลุ่มข้อความที่แก้จากหลังบ้านได้
-- เพิ่มเมนูใน [D:\cip\apps\web\src\pages\AdminPage.tsx](D:\cip\apps\web\src\pages\AdminPage.tsx) สำหรับแก้ `ข้อความหน้าแรก` และ `ข้อความ footer` ได้ครบจาก `/admin`
-- เพิ่มสไตล์ footer ใหม่ใน [D:\cip\apps\web\src\styles.css](D:\cip\apps\web\src\styles.css)
+- เพิ่ม signed webhook settlement ของ `promptpay`
+- เพิ่ม helper `webhook:promptpay` สำหรับยิง signed webhook ตาม `payment-intent-id`
+- เพิ่ม matcher สำหรับ statement JSON:
+  - endpoint `POST /api/admin/payment-intents/match-transactions`
+  - endpoint `POST /api/internal/promptpay/match-transactions`
+  - CLI `corepack pnpm --filter @cip/api match:promptpay --file <path-to-json>`
+- เพิ่ม UI ใน [D:\cip\apps\web\src\pages\AdminPage.tsx](D:\cip\apps\web\src\pages\AdminPage.tsx) ให้แอดมินวาง transaction JSON แล้วกดจับคู่ได้จากหน้าเว็บ
+- เพิ่ม batch helper [D:\cip\match-promptpay-transactions-local.bat](D:\cip\match-promptpay-transactions-local.bat)
+- อัปเดตเอกสาร localhost และ cron ให้รองรับ matcher
 
 ## สถานะการทดสอบ
-- `corepack pnpm --filter @cip/shared check` ผ่าน
-- `corepack pnpm --filter @cip/api check` ผ่าน
-- `corepack pnpm --filter @cip/api build` ผ่าน
-- `corepack pnpm --filter @cip/web check` ผ่าน
-- `corepack pnpm --filter @cip/web build` ผ่าน
+- `corepack pnpm check` ผ่าน
+- `corepack pnpm build` ผ่าน
+- `corepack pnpm test` ผ่าน
+- ทดสอบจริง:
+  - สร้าง topup intent ได้
+  - ยิง signed webhook ได้
+  - matcher จากไฟล์ JSON จับคู่สำเร็จ
+  - Wallet เพิ่มและ payment intent เปลี่ยนเป็น `paid`
 
 ## หมายเหตุ
-- ผมสร้างตาราง `site_contents` ในฐาน local ให้แล้ว เพื่อให้ทดสอบ content หน้าแรก/ footer บน localhost ได้ทันที
-- `drizzle-kit push` ยังติดกับ schema เดิมของฐาน local บางส่วน จึงใช้วิธีสร้างตารางนี้ให้ตรง ๆ แทนในรอบนี้
-- ฝั่งเว็บยังมี warning เรื่อง bundle size หลัง build แต่ระบบยัง build ผ่านและใช้งานได้
+- หลังทดสอบ matcher ได้รีเซ็ตฐานกลับด้วย `corepack pnpm db:seed` แล้ว
+- provider ตัวอื่นยังเป็น scaffold อยู่

@@ -17,6 +17,7 @@ import {
   forgotPasswordRequestSchema,
   forgotPasswordVerifySchema,
   homepageContentSchema,
+  paymentIntentPresentationSchema,
   type ProductType,
   walletTopupSchema
 } from "@cip/shared";
@@ -44,10 +45,12 @@ import {
 } from "./lib/auth";
 import { createId } from "./lib/ids";
 import { sendOtpEmail } from "./lib/mailer";
+import { verifyWebhookSignature } from "./lib/security";
 import { minutesFromNow, now } from "./lib/time";
 import { isProviderKey } from "./providers/registry";
 import {
   cleanupExpiredOtps,
+  cleanupExpiredPaymentIntents,
   createAdminCategory,
   createAdminInventoryItem,
   countActiveSessions,
@@ -59,6 +62,8 @@ import {
   getAdminDashboard,
   getAdminInventoryItems,
   getAdminInventorySummary,
+  getPromptpayConfigForWebhook,
+  getAdminPaymentIntents,
   getAdminProviders,
   getCatalog,
   getFooterContent,
@@ -66,15 +71,19 @@ import {
   getJobsList,
   getOrderForUser,
   getOrdersForUser,
+  getPaymentIntentPresentation,
   getProductBySlug,
   getWalletTransactionsForUser,
   importInventoryBatch,
+  matchPromptpayTransactions,
   processPendingJobs,
   requeueJob,
   settlePaymentByReference,
+  settlePaymentByReferenceWithAmount,
   settlePaymentIntentById,
   syncEnabledProviders,
   syncProvider,
+  updatePaymentIntentStatus,
   upsertFooterContent,
   upsertHomepageContent,
   updateAdminCategory,
@@ -90,6 +99,32 @@ const app = express();
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+function parseWebhookAmountCents(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.round(value);
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/^\d+$/.test(trimmed)) {
+    return Number(trimmed);
+  }
+
+  const normalized = Number(trimmed.replace(/,/g, ""));
+  if (!Number.isFinite(normalized)) {
+    return null;
+  }
+
+  return Math.round(normalized * 100);
 }
 
 async function trimUserSessions(userId: string) {
@@ -139,7 +174,13 @@ app.use(
     credentials: true
   })
 );
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buffer) => {
+      (req as express.Request & { rawBody?: string }).rawBody = buffer.toString("utf8");
+    }
+  })
+);
 app.use(cookieParser());
 app.use(attachAuthUser);
 
@@ -393,7 +434,8 @@ app.post("/api/auth/confirm-password", requireAuth, async (req, res) => {
 app.post("/api/wallet/topup-intents", requireAuth, async (req, res) => {
   const input = walletTopupSchema.parse(req.body);
   const paymentIntentId = await createWalletTopup(req.authUser!.id, input);
-  res.status(201).json({ paymentIntentId });
+  const paymentIntent = await getPaymentIntentPresentation(paymentIntentId, req.authUser!.id);
+  res.status(201).json({ paymentIntentId, paymentIntent });
 });
 
 app.get("/api/wallet/history", requireAuth, async (req, res) => {
@@ -407,10 +449,28 @@ app.get("/api/wallet/history", requireAuth, async (req, res) => {
 app.post("/api/orders", requireAuth, async (req, res) => {
   const input = createOrderSchema.parse(req.body);
   try {
-    res.status(201).json(await createOrder(req.authUser!.id, input));
+    const result = await createOrder(req.authUser!.id, input);
+    const paymentIntent = result.paymentIntentId
+      ? await getPaymentIntentPresentation(result.paymentIntentId, req.authUser!.id)
+      : null;
+
+    res.status(201).json({
+      ...result,
+      paymentIntent
+    });
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "สร้างออเดอร์ไม่สำเร็จ" });
   }
+});
+
+app.get("/api/payment-intents/:id", requireAuth, async (req, res) => {
+  const paymentIntent = await getPaymentIntentPresentation(String(req.params.id), req.authUser!.id, req.authUser?.role === "admin");
+  if (!paymentIntent) {
+    res.status(404).json({ message: "ไม่พบ payment intent" });
+    return;
+  }
+
+  res.json(paymentIntentPresentationSchema.parse(paymentIntent));
 });
 
 app.get("/api/orders", requireAuth, async (req, res) => {
@@ -535,6 +595,82 @@ app.put("/api/admin/products/:id", requireAdmin, async (req, res) => {
 
 app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
   res.json(await db.select().from(orders).orderBy(desc(orders.createdAt)));
+});
+
+app.get("/api/admin/payment-intents", requireAdmin, async (_req, res) => {
+  res.json(await getAdminPaymentIntents());
+});
+
+app.post("/api/admin/payment-intents/:id/status", requireAdmin, async (req, res) => {
+  const nextStatus = String(req.body.status ?? "");
+  if (!["paid", "failed", "expired"].includes(nextStatus)) {
+    res.status(400).json({ message: "invalid payment intent status" });
+    return;
+  }
+
+  try {
+    const paymentIntent = await updatePaymentIntentStatus(
+      String(req.params.id),
+      nextStatus as "paid" | "failed" | "expired",
+      req.authUser?.id,
+      typeof req.body.note === "string" ? req.body.note : undefined
+    );
+    res.json(paymentIntent);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "จัดการ payment intent ไม่สำเร็จ" });
+  }
+});
+
+app.post("/api/admin/payment-intents/match-transactions", requireAdmin, async (req, res) => {
+  const transactions = Array.isArray(req.body.transactions) ? (req.body.transactions as Array<Record<string, unknown>>) : null;
+  if (!transactions) {
+    res.status(400).json({ message: "transactions must be an array" });
+    return;
+  }
+
+  try {
+    const result = await matchPromptpayTransactions(
+      transactions.map((item) => ({
+        transactionId: typeof item.transactionId === "string" ? item.transactionId : null,
+        amountCents: Number(item.amountCents),
+        occurredAt: typeof item.occurredAt === "string" ? item.occurredAt : null,
+        referenceCode: typeof item.referenceCode === "string" ? item.referenceCode : null,
+        note: typeof item.note === "string" ? item.note : null
+      })),
+      req.authUser?.id
+    );
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "match transactions ไม่สำเร็จ" });
+  }
+});
+
+app.post("/api/internal/promptpay/match-transactions", async (req, res) => {
+  if (req.header("x-cron-secret") !== env.cronSecret) {
+    res.status(403).json({ message: "forbidden" });
+    return;
+  }
+
+  const transactions = Array.isArray(req.body.transactions) ? (req.body.transactions as Array<Record<string, unknown>>) : null;
+  if (!transactions) {
+    res.status(400).json({ message: "transactions must be an array" });
+    return;
+  }
+
+  try {
+    const result = await matchPromptpayTransactions(
+      transactions.map((item) => ({
+        transactionId: typeof item.transactionId === "string" ? item.transactionId : null,
+        amountCents: Number(item.amountCents),
+        occurredAt: typeof item.occurredAt === "string" ? item.occurredAt : null,
+        referenceCode: typeof item.referenceCode === "string" ? item.referenceCode : null,
+        note: typeof item.note === "string" ? item.note : null
+      }))
+    );
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "internal match transactions ไม่สำเร็จ" });
+  }
 });
 
 app.get("/api/admin/orders/:id", requireAdmin, async (req, res) => {
@@ -696,6 +832,46 @@ app.post("/api/webhooks/wepay", async (req, res) => {
   res.json({ ok: await settlePaymentByReference(referenceCode, "wepay", req.body) });
 });
 
+app.post("/api/webhooks/promptpay", async (req, res) => {
+  const rawBody = (req as express.Request & { rawBody?: string }).rawBody ?? JSON.stringify(req.body ?? {});
+  const timestamp = String(req.header("x-cip-timestamp") ?? "");
+  const signature = String(req.header("x-cip-signature") ?? "");
+  const promptpay = await getPromptpayConfigForWebhook();
+
+  if (!timestamp || !signature) {
+    res.status(400).json({ message: "missing webhook signature headers" });
+    return;
+  }
+
+  const timestampNumber = Number(timestamp);
+  if (!Number.isFinite(timestampNumber)) {
+    res.status(400).json({ message: "invalid timestamp" });
+    return;
+  }
+
+  const ageMs = Math.abs(Date.now() - timestampNumber);
+  if (ageMs > 5 * 60 * 1000) {
+    res.status(400).json({ message: "timestamp expired" });
+    return;
+  }
+
+  if (!verifyWebhookSignature(promptpay.config.webhookSecret, timestamp, rawBody, signature)) {
+    res.status(403).json({ message: "invalid signature" });
+    return;
+  }
+
+  const referenceCode = String(req.body.referenceCode ?? req.body.reference ?? "");
+  const amountCents = parseWebhookAmountCents(req.body.amountCents ?? req.body.amount ?? req.body.uniqueAmountCents);
+
+  if (!referenceCode || amountCents === null) {
+    res.status(400).json({ message: "missing referenceCode or amount" });
+    return;
+  }
+
+  const result = await settlePaymentByReferenceWithAmount(referenceCode, "promptpay", amountCents, req.body);
+  res.status(result.ok ? 200 : 400).json(result);
+});
+
 app.post("/api/webhooks/24payseller", async (req, res) => {
   const referenceCode = String(req.body.referenceCode ?? req.body.reference ?? "");
   if (!referenceCode) {
@@ -723,6 +899,15 @@ app.post("/api/internal/cron/cleanup-otps", async (req, res) => {
 
   await cleanupExpiredOtps();
   res.json({ ok: true });
+});
+
+app.post("/api/internal/cron/cleanup-payment-intents", async (req, res) => {
+  if (req.header("x-cron-secret") !== env.cronSecret) {
+    res.status(403).json({ message: "forbidden" });
+    return;
+  }
+
+  res.json({ expired: await cleanupExpiredPaymentIntents() });
 });
 
 app.post("/api/internal/cron/provider-sync", async (req, res) => {

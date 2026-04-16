@@ -27,6 +27,15 @@ if errorlevel 1 (
   exit /b 1
 )
 
+echo Ensuring local demo data is ready...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ensure-local-demo-data.ps1"
+if errorlevel 1 (
+  echo.
+  echo API could not start because local demo data could not be prepared.
+  pause
+  exit /b 1
+)
+
 echo Starting CIP API on http://localhost:3001
 call "%PNPM_CMD%" dev:api
 

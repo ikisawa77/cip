@@ -196,6 +196,7 @@ export const walletTransactions = mysqlTable("wallet_transactions", {
 export const providerConfigs = mysqlTable("provider_configs", {
   id: varchar("id", { length: 36 }).primaryKey(),
   providerKey: mysqlEnum("provider_key", [
+    "promptpay",
     "wepay",
     "24payseller",
     "peamsub24hr",

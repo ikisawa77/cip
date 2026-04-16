@@ -1,4 +1,4 @@
-import { footerContentDefaults, homepageContentDefaults } from "@cip/shared";
+import { footerContentDefaults, homepageContentDefaults, promptpayConfigDefaults } from "@cip/shared";
 
 import bcrypt from "bcryptjs";
 
@@ -259,6 +259,16 @@ async function main() {
   ]);
 
   await db.insert(providerConfigs).values([
+    {
+      id: createId(),
+      providerKey: "promptpay",
+      isEnabled: true,
+      configJson: JSON.stringify({
+        ...promptpayConfigDefaults,
+        instructions: "QR ตัวอย่างสำหรับ localhost กรุณาแก้เลขรับเงินจริงจากหลังบ้านก่อนเปิดใช้งานจริง"
+      }),
+      updatedAt: timestamp
+    },
     { id: createId(), providerKey: "wepay", isEnabled: false, configJson: "{}", updatedAt: timestamp },
     { id: createId(), providerKey: "24payseller", isEnabled: false, configJson: "{}", updatedAt: timestamp },
     { id: createId(), providerKey: "peamsub24hr", isEnabled: false, configJson: "{}", updatedAt: timestamp },

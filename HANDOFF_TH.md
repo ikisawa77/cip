@@ -1,36 +1,48 @@
 # Handoff
 
 ## ทำอะไรไปแล้ว
-- เพิ่มระบบแก้ข้อความหน้าแรกจากหลังบ้านใน [D:\cip\apps\web\src\pages\AdminPage.tsx](D:\cip\apps\web\src\pages\AdminPage.tsx)
-- เพิ่มระบบแก้ footer จากหลังบ้านใน [D:\cip\apps\web\src\pages\AdminPage.tsx](D:\cip\apps\web\src\pages\AdminPage.tsx)
-- ปรับ [D:\cip\apps\web\src\pages\HomePage.tsx](D:\cip\apps\web\src\pages\HomePage.tsx) ให้ใช้ content จากระบบจริง
-- ยก [D:\cip\apps\web\src\components\Layout.tsx](D:\cip\apps\web\src\components\Layout.tsx) ให้มี footer แบบใหม่ที่แก้ได้จาก backend
-- ขยาย backend ให้มี public/admin API สำหรับ `homepage` และ `footer` content ใน [D:\cip\apps\api\src\index.ts](D:\cip\apps\api\src\index.ts)
-- เพิ่ม storage สำหรับ content ชุดนี้ใน [D:\cip\apps\api\src\db\schema.ts](D:\cip\apps\api\src\db\schema.ts) และ [D:\cip\apps\api\src\services\store.ts](D:\cip\apps\api\src\services\store.ts)
+- ทำ `PromptPay QR` เป็น payment flow ตัวแรกของระบบใน [D:\cip\apps\api\src\lib\promptpay.ts](D:\cip\apps\api\src\lib\promptpay.ts)
+- เพิ่ม `paymentIntentPresentation` และ `promptpayConfig` ใน [D:\cip\packages\shared\src\index.ts](D:\cip\packages\shared\src\index.ts)
+- เพิ่ม API และ backend flow ใน [D:\cip\apps\api\src\index.ts](D:\cip\apps\api\src\index.ts) และ [D:\cip\apps\api\src\services\store.ts](D:\cip\apps\api\src\services\store.ts)
+- หน้า [D:\cip\apps\web\src\pages\TopupPage.tsx](D:\cip\apps\web\src\pages\TopupPage.tsx) และ [D:\cip\apps\web\src\pages\ProductPage.tsx](D:\cip\apps\web\src\pages\ProductPage.tsx) แสดง QR, ยอดโอนจริง, reference, expiry ได้แล้ว
+- หลังบ้าน [D:\cip\apps\web\src\pages\AdminPage.tsx](D:\cip\apps\web\src\pages\AdminPage.tsx) จัดการ `payment intents` ได้ และมีส่วน `ตัวจับคู่ธุรกรรม PromptPay`
+- เพิ่ม signed webhook `POST /api/webhooks/promptpay`
+- เพิ่ม helper script:
+  - [D:\cip\apps\api\src\scripts\send-promptpay-webhook.ts](D:\cip\apps\api\src\scripts\send-promptpay-webhook.ts)
+  - [D:\cip\apps\api\src\scripts\match-promptpay-transactions.ts](D:\cip\apps\api\src\scripts\match-promptpay-transactions.ts)
+  - [D:\cip\send-promptpay-webhook-local.bat](D:\cip\send-promptpay-webhook-local.bat)
+  - [D:\cip\match-promptpay-transactions-local.bat](D:\cip\match-promptpay-transactions-local.bat)
 
 ## ผลทดสอบล่าสุด
-- `corepack pnpm --filter @cip/shared check` ผ่าน
-- `corepack pnpm --filter @cip/api check` ผ่าน
-- `corepack pnpm --filter @cip/api build` ผ่าน
-- `corepack pnpm --filter @cip/web check` ผ่าน
-- `corepack pnpm --filter @cip/web build` ผ่าน
+- `corepack pnpm check` ผ่าน
+- `corepack pnpm build` ผ่าน
+- `corepack pnpm test` ผ่าน
+- ทดสอบจริงบน localhost แล้ว:
+  - `login -> create topup intent -> ได้ QR` ผ่าน
+  - `signed webhook -> settle payment` ผ่าน
+  - `match:promptpay --file <json>` ผ่าน
+  - `payment status = paid` และ `wallet เพิ่ม` หลัง matcher ผ่าน
+- รีเซ็ต demo data กลับแล้วด้วย `corepack pnpm db:seed`
 
 ## ตอนนี้ระบบอยู่ตรงไหน
-- หน้าแรกใช้ข้อความจากระบบหลังบ้านแล้ว
-- footer ใหม่ถูกแสดงทุกหน้า และใช้ข้อความจากระบบหลังบ้านเช่นกัน
-- หลังบ้านมี 2 ส่วนใหม่ที่ใช้แก้ copy ได้จริง คือ `ข้อความหน้าแรก` และ `ข้อความ footer`
+- payment flow แรกพร้อมใช้แล้วในระดับ localhost และพร้อม deploy แบบ Nokhosting-friendly
+- หลังบ้านตรวจ payment intents ได้ทั้งแบบ manual, signed webhook, และ transaction matcher
+- provider ภายนอกอื่น เช่น `wepay`, `24payseller`, `peamsub24hr`, `kbiz`, `truemoney`, `rdcw` ยังเป็น scaffold
 
 ## ต้องทำอะไรต่อ
-1. ทดสอบ save content จริงจาก `/admin` แล้วตรวจที่หน้าเว็บ
-2. เก็บ responsive/spacing ของ footer บนมือถือถ้าพบจุดแน่นเกินไป
-3. เดินต่อเชื่อม provider จริงตัวแรก
+1. ทำ bridge ฝั่ง statement/K-Biz ให้ดึงธุรกรรมจริงแล้วส่งเข้า `match-transactions` หรือ signed webhook อัตโนมัติ
+2. เลือก provider ภายนอกตัวแรกแล้วเชื่อม adapter จริง
+3. เพิ่ม admin operations ลึกขึ้น เช่น refund, manual review, audit viewer
+4. เก็บ performance เรื่อง bundle size ของหน้าเว็บ
 
 ## ถ้าจะทำต่อจากเครื่องอื่น
 - pull ล่าสุดจาก `main`
 - รัน `run-localhost.bat`
-- ล็อกอิน admin แล้วเข้า [http://127.0.0.1:5173/admin](http://127.0.0.1:5173/admin)
-- อ่าน [D:\cip\PROGRESS_TH.md](D:\cip\PROGRESS_TH.md) และ [D:\cip\NEXT_STEPS_TH.md](D:\cip\NEXT_STEPS_TH.md) ก่อนเริ่มรอบใหม่
+- อ่าน [D:\cip\docs\LOCAL_SETUP_TH.md](D:\cip\docs\LOCAL_SETUP_TH.md)
+- ล็อกอินด้วย
+  - Admin: `admin@example.com` / `ChangeMe123!`
+  - Demo: `demo@example.com` / `DemoPass123!`
 
 ## ข้อควรระวัง
-- ฐาน local เครื่องนี้มีตาราง `site_contents` แล้ว แต่ถ้าเครื่องใหม่ยังไม่มี อาจต้องสร้างตารางนี้ก่อนหรือใช้ seed/migration รอบถัดไป
-- bundle ฝั่งเว็บยังมี warning เรื่องขนาด แต่ build ผ่าน
+- หลังเปลี่ยน schema ถ้า demo data เพี้ยน ให้รัน `corepack pnpm db:seed`
+- bundle ฝั่งเว็บยังมี warning เรื่องขนาด แต่ build ผ่านและใช้งานได้

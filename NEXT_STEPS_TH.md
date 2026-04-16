@@ -1,8 +1,13 @@
 # งานถัดไป
 
-1. ทดสอบที่ [http://127.0.0.1:5173/admin](http://127.0.0.1:5173/admin) ให้ครบทั้งเมนู `ข้อความหน้าแรก` และ `ข้อความ footer` ว่าบันทึกแล้วหน้าเว็บสะท้อนผลจริง
-2. เปิด [http://127.0.0.1:5173](http://127.0.0.1:5173) และตรวจทั้ง hero, category copy และ footer ใหม่บน desktop/mobile
-3. ถ้าจะเก็บ performance ต่อ ให้เริ่มแยก code-splitting ของหน้าใหญ่ เช่น admin, account และ topup
-4. ถ้าจะเดินต่อเชิงธุรกิจ ให้เริ่มเชื่อม provider จริงตัวแรก เช่น `Wepay` หรือ `24Payseller`
-5. ถ้าจะ polish เพิ่ม ให้เก็บหน้าหมวด, หน้า product และ topup ให้ใช้ visual language ชุดเดียวกับ footer ใหม่
+1. ทำ bridge ฝั่ง statement/K-Biz
+ให้ระบบดึงธุรกรรมจริงแล้วส่งเข้า `POST /api/internal/promptpay/match-transactions` หรือ signed webhook อัตโนมัติ
 
+2. เชื่อม provider ภายนอกตัวแรก
+แนะนำเริ่ม `Wepay` หรือ `24Payseller` แล้วแทน scaffold ใน [D:\cip\apps\api\src\providers\registry.ts](D:\cip\apps\api\src\providers\registry.ts)
+
+3. เพิ่ม admin operations
+เช่น refund, manual review, payment audit, order detail ลึกขึ้น
+
+4. เก็บ performance รอบหน้า
+เริ่ม code-splitting หน้า `admin`, `account`, `topup`

@@ -61,6 +61,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const visibleHeaderItems = headerItems.filter((item) => !item.requiresAdmin || user?.role === "admin");
+  const showFooter = !location.pathname.startsWith("/admin");
   const footerContentQuery = useQuery({
     queryKey: ["content", "footer"],
     queryFn: () => apiFetch<FooterContent>("/api/content/footer")
@@ -182,70 +183,72 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </span>
       </button>
 
-      <footer className="footer-shell mx-auto mt-14 max-w-7xl overflow-hidden rounded-[2.4rem]">
-        <div className="footer-shell__glow" />
-        <div className="footer-shell__grid" />
-        <div className="footer-shell__content">
-          <div className="footer-hero">
-            <div className="footer-badge">
-              <Sparkles size={14} />
-              {footerContent.badge}
+      {showFooter ? (
+        <footer className="footer-shell mx-auto mt-14 max-w-7xl overflow-hidden rounded-[2.4rem]">
+          <div className="footer-shell__glow" />
+          <div className="footer-shell__grid" />
+          <div className="footer-shell__content">
+            <div className="footer-hero">
+              <div className="footer-badge">
+                <Sparkles size={14} />
+                {footerContent.badge}
+              </div>
+              <h2 className="footer-title">{footerContent.headline}</h2>
+              <p className="footer-description">{footerContent.description}</p>
+              <div className="footer-statuses">
+                {footerContent.statusPills.map((pill) => (
+                  <span className="footer-status-pill" key={pill}>
+                    {pill}
+                  </span>
+                ))}
+              </div>
             </div>
-            <h2 className="footer-title">{footerContent.headline}</h2>
-            <p className="footer-description">{footerContent.description}</p>
-            <div className="footer-statuses">
-              {footerContent.statusPills.map((pill) => (
-                <span className="footer-status-pill" key={pill}>
-                  {pill}
-                </span>
-              ))}
+
+            <div className="footer-links-grid">
+              <div className="footer-link-panel">
+                <div className="footer-link-title">
+                  <Package size={16} />
+                  {footerContent.quickLinksTitle}
+                </div>
+                <div className="footer-link-list">{footerContent.quickLinks.map((link) => renderFooterLink(link))}</div>
+              </div>
+
+              <div className="footer-link-panel">
+                <div className="footer-link-title">
+                  <ShieldCheck size={16} />
+                  {footerContent.supportLinksTitle}
+                </div>
+                <div className="footer-link-list">{footerContent.supportLinks.map((link) => renderFooterLink(link))}</div>
+              </div>
+
+              <div className="footer-contact-panel">
+                <div className="footer-link-title">
+                  <Coins size={16} />
+                  {footerContent.contactTitle}
+                </div>
+                <p className="footer-contact-line">{footerContent.contactLine}</p>
+                <p className="footer-contact-subline">{footerContent.contactSubline}</p>
+                <div className="footer-contact-actions">
+                  <Link className="footer-mini-action" to="/topup">
+                    เติมเงิน
+                  </Link>
+                  <Link className="footer-mini-action" to="/">
+                    กลับหน้าหลัก
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            <div className="footer-bottom-bar">
+              <div className="footer-bottom-copy">{footerContent.copyright}</div>
+              <div className="footer-bottom-note">
+                <LayoutDashboard size={14} />
+                {user?.role === "admin" ? "แก้ไข footer ได้จาก /admin" : "Footer นี้ดึงข้อความจากระบบหลังบ้าน"}
+              </div>
             </div>
           </div>
-
-          <div className="footer-links-grid">
-            <div className="footer-link-panel">
-              <div className="footer-link-title">
-                <Package size={16} />
-                {footerContent.quickLinksTitle}
-              </div>
-              <div className="footer-link-list">{footerContent.quickLinks.map((link) => renderFooterLink(link))}</div>
-            </div>
-
-            <div className="footer-link-panel">
-              <div className="footer-link-title">
-                <ShieldCheck size={16} />
-                {footerContent.supportLinksTitle}
-              </div>
-              <div className="footer-link-list">{footerContent.supportLinks.map((link) => renderFooterLink(link))}</div>
-            </div>
-
-            <div className="footer-contact-panel">
-              <div className="footer-link-title">
-                <Coins size={16} />
-                {footerContent.contactTitle}
-              </div>
-              <p className="footer-contact-line">{footerContent.contactLine}</p>
-              <p className="footer-contact-subline">{footerContent.contactSubline}</p>
-              <div className="footer-contact-actions">
-                <Link className="footer-mini-action" to="/topup">
-                  เติมเงิน
-                </Link>
-                <Link className="footer-mini-action" to="/">
-                  กลับหน้าหลัก
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          <div className="footer-bottom-bar">
-            <div className="footer-bottom-copy">{footerContent.copyright}</div>
-            <div className="footer-bottom-note">
-              <LayoutDashboard size={14} />
-              {user?.role === "admin" ? "แก้ไข footer ได้จาก /admin" : "Footer นี้ดึงข้อความจากระบบหลังบ้าน"}
-            </div>
-          </div>
-        </div>
-      </footer>
+        </footer>
+      ) : null}
     </div>
   );
 }

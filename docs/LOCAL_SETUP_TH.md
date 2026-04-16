@@ -5,70 +5,81 @@
 - Git
 - MariaDB Server
 
-หมายเหตุ: ตอนนี้โปรเจกต์มีสคริปต์ช่วยเปิด MariaDB local ให้อัตโนมัติแล้ว ถ้าติดตั้ง MariaDB Server ไว้ในเครื่อง
-
 ## วิธีที่ง่ายที่สุด
-1. รันครั้งแรก:
-   ```bash
-   first-time-setup.bat
-   ```
-2. ครั้งถัดไปให้รัน:
-   ```bash
-   run-localhost.bat
-   ```
+1. ครั้งแรกหรือหลังย้ายเครื่อง ให้รัน `first-time-setup.bat`
+2. หลังจากนั้นใช้ `run-localhost.bat`
 
-## first-time setup ทำอะไรให้บ้าง
-- ติดตั้ง dependencies
-- สร้าง `.env.local` จาก `.env.example`
-- เปิดไฟล์ `.env.local` ให้ตรวจค่า
-- เช็กและเปิด MariaDB local
-- สร้างฐาน `cip_local` ถ้ายังไม่มี
-- push schema
-- seed ข้อมูลตัวอย่าง
-
-## ไฟล์และ batch ที่ใช้บ่อย
-- `first-time-setup.bat`
-  ใช้ครั้งแรกหรือหลังลบ `node_modules`
-- `start-db-local.bat`
-  ใช้เปิด MariaDB local อย่างเดียว
-- `run-localhost.bat`
-  ใช้เปิดทั้ง API และ Web พร้อมกัน
-- `run-api-local.bat`
-  ใช้เปิดเฉพาะ API
-- `run-web-local.bat`
-  ใช้เปิดเฉพาะ Web
-- `stop-localhost.bat`
-  ใช้ปิด dev server ของ API/Web
-
-## ค่า local ปัจจุบัน
-- DB host: `127.0.0.1`
-- DB port: `3306`
-- DB user: `root`
-- DB password: เว้นว่าง
-- DB name: `cip_local`
-
-ถ้าภายหลังเปลี่ยนรหัสผ่าน MariaDB ให้แก้ใน `.env.local` ให้ตรงก่อนรัน
+## batch จะช่วยอะไรให้
+- เปิด MariaDB local ถ้ายังไม่รัน
+- ตรวจว่า `cip_local` มี demo data สำคัญครบหรือไม่
+- ถ้าขาด `users`, `products`, `site_contents` จะรัน `corepack pnpm db:seed` ให้เอง
+- เปิด API ที่ `http://127.0.0.1:3001`
+- เปิด Web ที่ `http://127.0.0.1:5173`
 
 ## บัญชีทดสอบหลัง seed
-- Admin:
-  - email: ค่าจาก `ADMIN_EMAIL` ใน `.env.local`
-  - password: ค่าจาก `ADMIN_PASSWORD` ใน `.env.local`
-- Customer demo:
-  - email: `demo@example.com`
-  - password: `DemoPass123!`
+- Admin: `admin@example.com` / `ChangeMe123!`
+- Demo: `demo@example.com` / `DemoPass123!`
 
-## ทดสอบ flow บน localhost
-1. เปิด `http://localhost:5173`
-2. ล็อกอินด้วยบัญชี demo
-3. ซื้อสินค้าที่ใช้ `PromptPay`
-4. ไปที่หน้า `บัญชีของฉัน`
-5. กดปุ่ม `จำลองชำระเงินบน localhost`
-6. ตรวจดูสถานะออเดอร์และ `deliveryPayload`
+## ทดสอบ PromptPay บน localhost
+1. ล็อกอินด้วยบัญชี demo
+2. เปิด [http://127.0.0.1:5173/topup](http://127.0.0.1:5173/topup)
+3. สร้าง payment intent แบบ `PromptPay QR`
+4. หน้าเว็บจะแสดง QR, ยอดที่ต้องโอน, reference และเวลาหมดอายุ
+5. ถ้าจะทดสอบแบบ dev ให้กด `จำลองชำระเงินบน localhost`
+6. ถ้าจะทดสอบจากหลังบ้าน ให้เปิด [http://127.0.0.1:5173/admin](http://127.0.0.1:5173/admin) แล้วไปเมนู `การชำระเงิน`
+
+## ทดสอบ signed webhook
+- ใช้ `send-promptpay-webhook-local.bat <payment-intent-id>`
+- หรือ `corepack pnpm --filter @cip/api webhook:promptpay --payment-intent-id <id>`
+
+## ทดสอบ transaction matcher
+- ในหลังบ้านมีส่วน `ตัวจับคู่ธุรกรรม PromptPay` ให้วาง JSON array แล้วกดจับคู่ได้ทันที
+- ถ้าจะยิงจากไฟล์ JSON ใช้ `match-promptpay-transactions-local.bat <path-to-json>`
+- หรือ `corepack pnpm --filter @cip/api match:promptpay --file <path-to-json>`
+
+ตัวอย่าง JSON:
+
+```json
+[
+  {
+    "transactionId": "txn-demo-001",
+    "amountCents": 10019,
+    "occurredAt": "2026-04-16T09:35:00.000Z",
+    "note": "รายการตัวอย่างจาก statement"
+  }
+]
+```
+
+## ถ้าจะตั้งเลข PromptPay จริง
+1. ล็อกอิน admin
+2. เข้า [http://127.0.0.1:5173/admin](http://127.0.0.1:5173/admin)
+3. ไปเมนู `Provider`
+4. เลือก `promptpay`
+5. วาง JSON ตัวอย่างแล้วแก้เป็นข้อมูลจริงของร้าน
+
+```json
+{
+  "receiverType": "phone",
+  "receiver": "0812345678",
+  "merchantName": "CIP SHOP",
+  "merchantCity": "BANGKOK",
+  "instructions": "สแกน QR นี้จากแอปธนาคารเพื่อชำระเงิน จากนั้นรอระบบหรือแอดมินยืนยันรายการ",
+  "accountLabel": "บัญชี PromptPay ของร้าน",
+  "webhookSecret": "replace-with-real-secret",
+  "webhookNotes": "ส่ง POST มาที่ /api/webhooks/promptpay พร้อม header x-cip-signature และ x-cip-timestamp"
+}
+```
 
 ## คำสั่งหลัก
-- `corepack pnpm build`
 - `corepack pnpm check`
+- `corepack pnpm build`
 - `corepack pnpm test`
-- `corepack pnpm setup:local`
 - `corepack pnpm db:push`
 - `corepack pnpm db:seed`
+- `corepack pnpm --filter @cip/api webhook:promptpay --payment-intent-id <id>`
+- `corepack pnpm --filter @cip/api match:promptpay --file <path-to-json>`
+
+## ถ้า login ไม่ได้หรือข้อมูลหาย
+- ใช้ `run-localhost.bat` ใหม่หนึ่งรอบ
+- หรือรัน `powershell -ExecutionPolicy Bypass -File .\\scripts\\ensure-local-demo-data.ps1`
+- ถ้ายังเพี้ยน ให้รัน `corepack pnpm db:seed`

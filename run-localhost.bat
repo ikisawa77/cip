@@ -32,6 +32,14 @@ if errorlevel 1 (
   exit /b 1
 )
 
+echo Ensuring local demo data is ready...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ensure-local-demo-data.ps1"
+if errorlevel 1 (
+  echo [ERROR] Local demo data could not be prepared.
+  pause
+  exit /b 1
+)
+
 echo Opening API and Web dev servers...
 start "CIP API" cmd /k call "%~dp0run-api-local.bat"
 start "CIP WEB" cmd /k call "%~dp0run-web-local.bat"

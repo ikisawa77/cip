@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { footerContentDefaults, homepageContentDefaults, type FooterContent, type HomepageContent } from "@cip/shared";
+import { footerContentDefaults, homepageContentDefaults, promptpayConfigDefaults, type FooterContent, type HomepageContent } from "@cip/shared";
 import {
   BadgeDollarSign,
   Boxes,
@@ -95,6 +95,48 @@ type JobRow = {
   status: string;
   payloadJson: string;
   updatedAt: string;
+};
+
+type PaymentIntentRow = {
+  id: string;
+  provider: "promptpay_qr" | "kbiz_match" | "truemoney_gift";
+  status: "pending" | "paid" | "expired" | "failed";
+  amountCents: number;
+  uniqueAmountCents: number;
+  referenceCode: string;
+  expiresAt: string;
+  paidAt: string | null;
+  userId: string;
+  userEmail: string;
+  userDisplayName: string;
+  targetType: "wallet" | "order";
+  targetId: string;
+  createdAt: string;
+  promptpay: {
+    isConfigured: boolean;
+    merchantName: string;
+    merchantCity: string;
+    accountLabel: string;
+    instructions: string;
+    receiverType: "phone" | "nationalId" | "taxId";
+    receiverHint: string;
+    qrPayload: string | null;
+    qrDataUrl: string | null;
+  } | null;
+};
+
+type PaymentMatcherResult = {
+  total: number;
+  matched: number;
+  unmatched: number;
+  results: Array<{
+    transactionId: string;
+    amountCents: number;
+    matched: boolean;
+    reason: string;
+    paymentIntentId: string | null;
+    referenceCode: string | null;
+  }>;
 };
 
 const inventoryKinds: Array<InventoryItemRow["kind"]> = ["code", "download_link", "account", "generic"];
@@ -242,6 +284,7 @@ const adminNavItems = [
   { label: "คลังโค้ด", href: "#admin-inventory", icon: KeyRound },
   { label: "สินค้า", href: "#admin-products", icon: PackagePlus },
   { label: "Provider", href: "#admin-providers", icon: PlugZap },
+  { label: "การชำระเงิน", href: "#admin-payments", icon: BadgeDollarSign },
   { label: "ออเดอร์ล่าสุด", href: "#admin-orders", icon: ReceiptText },
   { label: "คิวงาน", href: "#admin-jobs", icon: Workflow }
 ] as const;
@@ -281,6 +324,22 @@ export function AdminPage() {
   const [inventoryError, setInventoryError] = useState<string | null>(null);
   const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState("all");
   const [inventoryProductFilter, setInventoryProductFilter] = useState("all");
+  const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentMatcherPayload, setPaymentMatcherPayload] = useState(
+    JSON.stringify(
+      [
+        {
+          transactionId: "txn-demo-001",
+          amountCents: 10019,
+          occurredAt: new Date().toISOString(),
+          note: "รายการโอนจาก statement ตัวอย่าง"
+        }
+      ],
+      null,
+      2
+    )
+  );
 
   const dashboardQuery = useQuery({
     queryKey: ["admin", "dashboard"],
@@ -345,6 +404,11 @@ export function AdminPage() {
   const jobsQuery = useQuery({
     queryKey: ["admin", "jobs"],
     queryFn: () => apiFetch<JobRow[]>("/api/admin/jobs"),
+    enabled: user?.role === "admin"
+  });
+  const paymentIntentsQuery = useQuery({
+    queryKey: ["admin", "payment-intents"],
+    queryFn: () => apiFetch<PaymentIntentRow[]>("/api/admin/payment-intents"),
     enabled: user?.role === "admin"
   });
 
@@ -660,6 +724,56 @@ export function AdminPage() {
       await queryClient.invalidateQueries({ queryKey: ["admin", "jobs"] });
     }
   });
+  const paymentStatusMutation = useMutation({
+    mutationFn: ({
+      paymentIntentId,
+      status,
+      note
+    }: {
+      paymentIntentId: string;
+      status: "paid" | "failed" | "expired";
+      note?: string;
+    }) =>
+      apiFetch<PaymentIntentRow>(`/api/admin/payment-intents/${paymentIntentId}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status, note })
+      }),
+    onSuccess: async (result) => {
+      setPaymentError(null);
+      setPaymentMessage(`อัปเดต ${result.referenceCode} เป็น ${result.status} เรียบร้อย`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "payment-intents"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "orders"] })
+      ]);
+    },
+    onError: (error) => {
+      setPaymentMessage(null);
+      setPaymentError(error instanceof Error ? error.message : "อัปเดต payment intent ไม่สำเร็จ");
+    }
+  });
+  const paymentMatcherMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<PaymentMatcherResult>("/api/admin/payment-intents/match-transactions", {
+        method: "POST",
+        body: JSON.stringify({
+          transactions: JSON.parse(paymentMatcherPayload)
+        })
+      }),
+    onSuccess: async (result) => {
+      setPaymentError(null);
+      setPaymentMessage(`จับคู่แล้ว ${result.matched}/${result.total} รายการ`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "payment-intents"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "orders"] })
+      ]);
+    },
+    onError: (error) => {
+      setPaymentMessage(null);
+      setPaymentError(error instanceof Error ? error.message : "จับคู่ธุรกรรมไม่สำเร็จ");
+    }
+  });
+
+  const paymentMatcherResult = paymentMatcherMutation.data ?? null;
 
   useEffect(() => {
     if (selectedProvider) {
@@ -1940,6 +2054,15 @@ export function AdminPage() {
           {selectedProvider ? (
             <div className="mt-4 rounded-[1.5rem] bg-[var(--text)] px-4 py-4 text-sm text-slate-100">
               <div>กำลังแก้ไข: {selectedProvider}</div>
+              {selectedProvider === "promptpay" ? (
+                <div className="mt-4 rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-4 text-xs leading-7 text-slate-200">
+                  <div className="font-semibold text-white">ตัวอย่าง config สำหรับ PromptPay</div>
+                  <div className="mt-2">ใช้ provider นี้สำหรับสร้าง QR รับเงินจริงบนหน้า `/topup` และ `/product/:slug`</div>
+                  <pre className="mt-3 overflow-auto rounded-[1rem] bg-slate-950/55 px-4 py-3 text-[11px] text-slate-100">
+                    {JSON.stringify(promptpayConfigDefaults, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
               <label className="mt-4 flex items-center gap-3 text-sm">
                 <input checked={providerEnabled} onChange={(event) => setProviderEnabled(event.target.checked)} type="checkbox" />
                 เปิดใช้งาน provider นี้
@@ -1961,6 +2084,239 @@ export function AdminPage() {
               {providerSyncMessage ? <div className="mt-3 rounded-2xl bg-emerald-500/10 px-4 py-3 text-emerald-200">{providerSyncMessage}</div> : null}
             </div>
           ) : null}
+        </section>
+
+        <section className="panel rounded-[2.5rem] p-6" id="admin-payments">
+          <div className="section-head">
+            <div className="section-head__icon">
+              <BadgeDollarSign size={18} />
+            </div>
+            <p className="section-label">Payment Intents</p>
+          </div>
+          <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold text-slate-950">รายการชำระเงินล่าสุด</h2>
+              <p className="mt-2 text-sm muted-text">ใช้ยืนยันการโอนจากหลังบ้าน หรือทำเครื่องหมายว่า failed / expired ได้โดยไม่ต้องพึ่งปุ่ม dev</p>
+            </div>
+            <div className="rounded-full border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-slate-600">
+              ทั้งหมด {paymentIntentsQuery.data?.length ?? 0} รายการ
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3">
+            {paymentIntentsQuery.data?.slice(0, 8).map((intent) => (
+              <div className="panel-soft rounded-[1.6rem] px-4 py-4" key={intent.id}>
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-sm font-semibold text-slate-950">{intent.referenceCode}</div>
+                      <span className="rounded-full bg-[var(--surface-2)] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-600">{intent.provider}</span>
+                      <span
+                        className={`rounded-full px-3 py-1 text-[11px] font-medium ${
+                          intent.status === "paid"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : intent.status === "pending"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-rose-100 text-rose-700"
+                        }`}
+                      >
+                        {intent.status}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-sm text-slate-700">
+                      {intent.userDisplayName} ({intent.userEmail}) · {intent.targetType} · {formatMoney(intent.uniqueAmountCents)}
+                    </div>
+                    <div className="mt-2 text-xs text-slate-500">
+                      สร้างเมื่อ {formatDate(intent.createdAt)} · หมดอายุ {formatDate(intent.expiresAt)}
+                    </div>
+                    {intent.promptpay ? (
+                      <div className="mt-3 rounded-[1.25rem] border border-[var(--line)] bg-white/88 px-4 py-3 text-sm text-slate-700">
+                        <div>บัญชีรับเงิน: {intent.promptpay.accountLabel}</div>
+                        <div>ปลายทาง: {intent.promptpay.receiverHint}</div>
+                        <div>merchant: {intent.promptpay.merchantName}</div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="secondary-button rounded-full px-4 py-2 text-xs"
+                      onClick={() => {
+                        const command = `corepack pnpm --filter @cip/api webhook:promptpay --payment-intent-id ${intent.id}`;
+                        void navigator.clipboard.writeText(command);
+                        setPaymentError(null);
+                        setPaymentMessage(`คัดลอกคำสั่งยิง signed webhook สำหรับ ${intent.referenceCode} แล้ว`);
+                      }}
+                      type="button"
+                    >
+                      คัดลอกคำสั่ง webhook
+                    </button>
+                    <button
+                      className="secondary-button rounded-full px-4 py-2 text-xs"
+                      disabled={intent.status === "paid" || paymentStatusMutation.isPending}
+                      onClick={() => void paymentStatusMutation.mutate({ paymentIntentId: intent.id, status: "paid", note: "ยืนยันชำระจากหลังบ้าน" })}
+                      type="button"
+                    >
+                      ยืนยันชำระ
+                    </button>
+                    <button
+                      className="rounded-full border border-amber-200 px-4 py-2 text-xs text-amber-700 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={intent.status !== "pending" || paymentStatusMutation.isPending}
+                      onClick={() => void paymentStatusMutation.mutate({ paymentIntentId: intent.id, status: "expired", note: "ทำเครื่องหมายหมดอายุจากหลังบ้าน" })}
+                      type="button"
+                    >
+                      mark expired
+                    </button>
+                    <button
+                      className="rounded-full border border-rose-200 px-4 py-2 text-xs text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={intent.status === "paid" || paymentStatusMutation.isPending}
+                      onClick={() => void paymentStatusMutation.mutate({ paymentIntentId: intent.id, status: "failed", note: "ทำเครื่องหมาย failed จากหลังบ้าน" })}
+                      type="button"
+                    >
+                      mark failed
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {paymentIntentsQuery.data?.length === 0 ? (
+              <div className="rounded-[1.6rem] border border-dashed border-[var(--line)] px-4 py-5 text-sm muted-text">ยังไม่มี payment intent ให้จัดการ</div>
+            ) : null}
+          </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+            <div className="rounded-[1.85rem] border border-[var(--line)] bg-white/92 px-5 py-5 shadow-[0_24px_80px_rgba(15,23,42,0.06)]">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-900">
+                    <ScanSearch size={16} className="text-[var(--brand)]" />
+                    ตัวจับคู่ธุรกรรม PromptPay
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">
+                    วางรายการ statement หรือธุรกรรมในรูปแบบ JSON array เพื่อจับคู่กับ payment intent ที่ยังรอชำระจากหลังบ้านได้ทันที
+                  </p>
+                </div>
+                <button
+                  className="secondary-button rounded-full px-4 py-2 text-xs"
+                  onClick={() => {
+                    const command = "corepack pnpm --filter @cip/api match:promptpay --file .\\\\transactions.json";
+                    void navigator.clipboard.writeText(command);
+                    setPaymentError(null);
+                    setPaymentMessage("คัดลอกคำสั่ง matcher สำหรับเครื่องช่วยหรือ cron แล้ว");
+                  }}
+                  type="button"
+                >
+                  คัดลอกคำสั่ง matcher
+                </button>
+              </div>
+
+              <div className="mt-4 rounded-[1.35rem] bg-[var(--surface-2)] px-4 py-4 text-xs leading-7 text-slate-600">
+                <div>`transactionId` คือเลขอ้างอิงจาก statement หรือระบบ bridge</div>
+                <div>`amountCents` ต้องเป็นยอดเงินจริงรวม unique amount เช่น 10019</div>
+                <div>`occurredAt` ใช้เวลาแบบ ISO เพื่อช่วยแยกหลายรายการที่ยอดใกล้กัน</div>
+                <div>`referenceCode` ใส่ได้ถ้าระบบต้นทางรู้เลขอ้างอิงของร้าน</div>
+              </div>
+
+              <textarea
+                className="mt-4 min-h-[280px] w-full rounded-[1.5rem] border border-[var(--line)] bg-white px-4 py-4 font-mono text-xs text-slate-800 outline-none transition focus:border-[var(--brand)]"
+                onChange={(event) => setPaymentMatcherPayload(event.target.value)}
+                value={paymentMatcherPayload}
+              />
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  className="primary-button rounded-full px-5 py-3 text-sm"
+                  disabled={paymentMatcherMutation.isPending}
+                  onClick={() => void paymentMatcherMutation.mutate()}
+                  type="button"
+                >
+                  {paymentMatcherMutation.isPending ? "กำลังจับคู่ธุรกรรม..." : "จับคู่ธุรกรรมตอนนี้"}
+                </button>
+                <button
+                  className="secondary-button rounded-full px-5 py-3 text-sm"
+                  onClick={() =>
+                    setPaymentMatcherPayload(
+                      JSON.stringify(
+                        [
+                          {
+                            transactionId: "txn-demo-001",
+                            amountCents: 10019,
+                            occurredAt: new Date().toISOString(),
+                            note: "รายการตัวอย่างจาก statement"
+                          }
+                        ],
+                        null,
+                        2
+                      )
+                    )
+                  }
+                  type="button"
+                >
+                  โหลดตัวอย่างใหม่
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-[1.85rem] border border-[var(--line)] bg-[var(--text)] px-5 py-5 text-slate-100 shadow-[0_24px_80px_rgba(15,23,42,0.12)]">
+              <div className="inline-flex items-center gap-2 text-sm font-medium text-white">
+                <BadgeDollarSign size={16} />
+                สรุปผล matcher ล่าสุด
+              </div>
+              {paymentMatcherResult ? (
+                <>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-[1.35rem] border border-white/10 bg-white/5 px-4 py-4">
+                      <div className="text-xs uppercase tracking-[0.22em] text-slate-300">ทั้งหมด</div>
+                      <div className="mt-2 text-2xl font-semibold text-white">{paymentMatcherResult.total}</div>
+                    </div>
+                    <div className="rounded-[1.35rem] border border-emerald-400/20 bg-emerald-400/10 px-4 py-4">
+                      <div className="text-xs uppercase tracking-[0.22em] text-emerald-200">จับคู่สำเร็จ</div>
+                      <div className="mt-2 text-2xl font-semibold text-white">{paymentMatcherResult.matched}</div>
+                    </div>
+                    <div className="rounded-[1.35rem] border border-amber-300/20 bg-amber-300/10 px-4 py-4">
+                      <div className="text-xs uppercase tracking-[0.22em] text-amber-100">ต้องตรวจต่อ</div>
+                      <div className="mt-2 text-2xl font-semibold text-white">{paymentMatcherResult.unmatched}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {paymentMatcherResult.results.map((item) => (
+                      <div
+                        className={`rounded-[1.35rem] border px-4 py-4 ${
+                          item.matched ? "border-emerald-300/20 bg-emerald-400/10" : "border-white/10 bg-white/5"
+                        }`}
+                        key={item.transactionId}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-sm font-medium text-white">{item.transactionId}</div>
+                          <span
+                            className={`rounded-full px-3 py-1 text-[11px] font-medium uppercase tracking-[0.2em] ${
+                              item.matched ? "bg-emerald-200 text-emerald-900" : "bg-white/10 text-slate-200"
+                            }`}
+                          >
+                            {item.matched ? "matched" : "pending review"}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-sm text-slate-200">{formatMoney(item.amountCents)}</div>
+                        <div className="mt-2 text-xs leading-6 text-slate-300">
+                          reason: {item.reason}
+                          {item.referenceCode ? ` | ref: ${item.referenceCode}` : ""}
+                          {item.paymentIntentId ? ` | payment intent: ${item.paymentIntentId}` : ""}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-4 rounded-[1.35rem] border border-dashed border-white/15 px-4 py-5 text-sm text-slate-300">
+                  ยังไม่มีผลลัพธ์รอบล่าสุด ลองวาง statement JSON แล้วกดจับคู่ธุรกรรมเพื่อดูรายการที่จับคู่ได้และรายการที่ยังต้องตรวจด้วยมือ
+                </div>
+              )}
+            </div>
+          </div>
+
+          {paymentMessage ? <div className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{paymentMessage}</div> : null}
+          {paymentError ? <div className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{paymentError}</div> : null}
         </section>
 
         <section className="panel rounded-[2.5rem] p-6" id="admin-orders">

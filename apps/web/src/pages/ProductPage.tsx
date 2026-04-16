@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { PaymentIntentPresentation } from "@cip/shared";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, ArrowLeft, Coins, LockKeyhole, QrCode, ShoppingBag, Tags, WalletCards } from "lucide-react";
+import { AlertCircle, ArrowLeft, Coins, Copy, LockKeyhole, QrCode, ShoppingBag, Tags, WalletCards } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -39,6 +40,10 @@ function formatMoney(cents: number) {
   }).format(cents / 100);
 }
 
+function formatDate(value: string) {
+  return new Date(value).toLocaleString("th-TH");
+}
+
 export function ProductPage() {
   const { slug = "" } = useParams();
   const { user, openAuth } = useAuth();
@@ -55,7 +60,7 @@ export function ProductPage() {
   });
   const orderMutation = useMutation({
     mutationFn: (paymentMethod: "wallet" | "promptpay_qr") =>
-      apiFetch<{ orderId: string; paymentIntentId: string | null }>("/api/orders", {
+      apiFetch<{ orderId: string; paymentIntentId: string | null; paymentIntent: PaymentIntentPresentation | null }>("/api/orders", {
         method: "POST",
         body: JSON.stringify({
           productId: productQuery.data!.id,
@@ -70,6 +75,28 @@ export function ProductPage() {
         queryClient.invalidateQueries({ queryKey: ["wallet", "history"] }),
         queryClient.invalidateQueries({ queryKey: ["orders"] }),
         queryClient.invalidateQueries({ queryKey: ["product", slug] })
+      ]);
+    }
+  });
+  const paymentIntentId = orderMutation.data?.paymentIntentId ?? null;
+  const paymentIntentQuery = useQuery({
+    queryKey: ["payment-intent", paymentIntentId],
+    queryFn: () => apiFetch<PaymentIntentPresentation>(`/api/payment-intents/${paymentIntentId}`),
+    enabled: Boolean(user && paymentIntentId)
+  });
+  const settleMutation = useMutation({
+    mutationFn: (intentId: string) =>
+      apiFetch<{ ok: boolean }>(`/api/dev/settle-payment/${intentId}`, {
+        method: "POST",
+        body: JSON.stringify({})
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["auth", "me"] }),
+        queryClient.invalidateQueries({ queryKey: ["wallet", "history"] }),
+        queryClient.invalidateQueries({ queryKey: ["orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["product", slug] }),
+        queryClient.invalidateQueries({ queryKey: ["payment-intent", paymentIntentId] })
       ]);
     }
   });
@@ -91,6 +118,7 @@ export function ProductPage() {
 
   const product = productQuery.data;
   const currentCategory = catalogQuery.data?.find((category) => category.products.some((item) => item.slug === product.slug)) ?? null;
+  const promptpayIntent = paymentIntentQuery.data?.provider === "promptpay_qr" ? paymentIntentQuery.data : null;
 
   const openConfirmDialog = (paymentMethod: "wallet" | "promptpay_qr") => {
     if (!user) {
@@ -189,6 +217,71 @@ export function ProductPage() {
               สร้างออเดอร์แล้ว: {orderMutation.data.orderId}
               {orderMutation.data.paymentIntentId ? ` | Payment Intent: ${orderMutation.data.paymentIntentId}` : " | ชำระด้วย Wallet สำเร็จ"}
               {!orderMutation.data.paymentIntentId ? " | ระบบรีเฟรชยอด Wallet ให้แล้ว" : ""}
+            </div>
+          ) : null}
+          {promptpayIntent ? (
+            <div className="mt-4 grid gap-4 rounded-[1.8rem] border border-[rgba(23,113,138,0.14)] bg-[linear-gradient(150deg,#ffffff,#f2f9fb)] p-4 md:grid-cols-[0.85fr_1.15fr]">
+              <div className="panel-soft flex items-center justify-center rounded-[1.5rem] p-3">
+                {promptpayIntent.promptpay?.qrDataUrl ? (
+                  <img alt="PromptPay QR" className="h-auto w-full max-w-[240px] rounded-[1.2rem] bg-white p-3" src={promptpayIntent.promptpay.qrDataUrl} />
+                ) : (
+                  <div className="rounded-[1.2rem] border border-dashed border-[var(--line)] px-4 py-6 text-center text-sm muted-text">
+                    ยังไม่มี QR พร้อมใช้งาน กรุณาตั้งค่า provider `promptpay` ในหลังบ้าน
+                  </div>
+                )}
+              </div>
+              <div className="space-y-3">
+                <div className="section-label">PromptPay Checkout</div>
+                <div className="text-xl font-semibold text-slate-950">สแกนเพื่อชำระสินค้านี้ตามยอดเฉพาะรายการ</div>
+                <div className="text-sm leading-7 muted-text">{promptpayIntent.promptpay?.instructions}</div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="panel-soft rounded-[1.2rem] px-4 py-4">
+                    <div className="text-xs uppercase tracking-[0.2em] text-[var(--brand)]">ยอดที่ต้องโอน</div>
+                    <div className="mt-2 text-xl font-semibold text-slate-950">{formatMoney(promptpayIntent.uniqueAmountCents)}</div>
+                  </div>
+                  <div className="panel-soft rounded-[1.2rem] px-4 py-4">
+                    <div className="text-xs uppercase tracking-[0.2em] text-[var(--brand)]">Reference</div>
+                    <div className="mt-2 text-sm font-semibold text-slate-950">{promptpayIntent.referenceCode}</div>
+                  </div>
+                  <div className="panel-soft rounded-[1.2rem] px-4 py-4">
+                    <div className="text-xs uppercase tracking-[0.2em] text-[var(--brand)]">บัญชีรับเงิน</div>
+                    <div className="mt-2 text-sm font-semibold text-slate-950">{promptpayIntent.promptpay?.accountLabel}</div>
+                    <div className="mt-1 text-sm text-slate-600">{promptpayIntent.promptpay?.receiverHint}</div>
+                  </div>
+                  <div className="panel-soft rounded-[1.2rem] px-4 py-4">
+                    <div className="text-xs uppercase tracking-[0.2em] text-[var(--brand)]">หมดอายุ</div>
+                    <div className="mt-2 text-sm font-semibold text-slate-950">{formatDate(promptpayIntent.expiresAt)}</div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    className="secondary-button inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm"
+                    onClick={() => {
+                      if (promptpayIntent.referenceCode) {
+                        void navigator.clipboard.writeText(promptpayIntent.referenceCode);
+                      }
+                    }}
+                    type="button"
+                  >
+                    <Copy size={15} />
+                    คัดลอกรหัสอ้างอิง
+                  </button>
+                  <button
+                    className="secondary-button rounded-full px-4 py-2 text-sm"
+                    onClick={() => {
+                      if (promptpayIntent.id) {
+                        void settleMutation.mutate(promptpayIntent.id);
+                      }
+                    }}
+                    type="button"
+                  >
+                    จำลองชำระบน localhost
+                  </button>
+                  <div className={`rounded-full px-4 py-2 text-sm font-medium ${promptpayIntent.status === "paid" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                    สถานะ: {promptpayIntent.status === "paid" ? "ชำระแล้ว" : "รอชำระ"}
+                  </div>
+                </div>
+              </div>
             </div>
           ) : null}
           {orderMutation.error instanceof Error ? <div className="mt-4 rounded-[1.5rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{orderMutation.error.message}</div> : null}
