@@ -23,7 +23,11 @@ type MatchResult = {
 type KbizImportConfig = {
   sourceDir?: string;
   archiveDir?: string;
+  errorDir?: string;
   filePattern?: string;
+  recursive: boolean;
+  stableMs: number;
+  archiveDuplicates: boolean;
   maxFiles: number;
 };
 
@@ -62,7 +66,14 @@ function parseConfig(configJson: string): KbizImportConfig {
   return {
     sourceDir: typeof parsed.sourceDir === "string" ? parsed.sourceDir.trim() : undefined,
     archiveDir: typeof parsed.archiveDir === "string" ? parsed.archiveDir.trim() : undefined,
+    errorDir: typeof parsed.errorDir === "string" ? parsed.errorDir.trim() : undefined,
     filePattern: typeof parsed.filePattern === "string" ? parsed.filePattern.trim() : undefined,
+    recursive: parsed.recursive === true,
+    stableMs:
+      typeof parsed.stableMs === "number" && Number.isFinite(parsed.stableMs) && parsed.stableMs >= 0
+        ? Math.min(10 * 60 * 1000, Math.round(parsed.stableMs))
+        : 5_000,
+    archiveDuplicates: parsed.archiveDuplicates !== false,
     maxFiles:
       typeof parsed.maxFiles === "number" && Number.isFinite(parsed.maxFiles) && parsed.maxFiles > 0
         ? Math.max(1, Math.min(20, Math.round(parsed.maxFiles)))
@@ -87,36 +98,81 @@ function buildFileSignature(filePath: string, stat: { size: number; mtimeMs: num
   return `${path.basename(filePath)}:${stat.size}:${Math.round(stat.mtimeMs)}`;
 }
 
+function toNumber(value: number | bigint) {
+  return typeof value === "bigint" ? Number(value) : value;
+}
+
 async function listImportCandidates(config: KbizImportConfig) {
   if (!config.sourceDir) {
     return [];
   }
 
-  const entries = await fs.readdir(config.sourceDir, { withFileTypes: true });
   const accepts = buildMatcher(config.filePattern);
-
-  const files = await Promise.all(
-    entries
-      .filter((entry) => entry.isFile() && accepts(entry.name))
-      .map(async (entry) => {
-        const absolutePath = path.join(config.sourceDir!, entry.name);
-        const stat = await fs.stat(absolutePath);
-
-        return {
-          absolutePath,
-          fileName: entry.name,
-          stat,
-          signature: buildFileSignature(absolutePath, stat)
-        };
-      })
+  const excludedDirs = new Set(
+    [config.archiveDir, config.errorDir]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .map((value) => path.resolve(value))
   );
+  const cutoffTime = Date.now() - config.stableMs;
 
-  return files.sort((left, right) => left.stat.mtimeMs - right.stat.mtimeMs).slice(0, config.maxFiles);
+  async function walkDirectory(directory: string): Promise<
+    Array<{
+      absolutePath: string;
+      fileName: string;
+      relativePath: string;
+      stat: Awaited<ReturnType<typeof fs.stat>>;
+      signature: string;
+    }>
+  > {
+    const entries = await fs.readdir(directory, { withFileTypes: true });
+    const results: Array<{
+      absolutePath: string;
+      fileName: string;
+      relativePath: string;
+      stat: Awaited<ReturnType<typeof fs.stat>>;
+      signature: string;
+    }> = [];
+
+    for (const entry of entries) {
+      const absolutePath = path.join(directory, entry.name);
+      const normalizedPath = path.resolve(absolutePath);
+
+      if (entry.isDirectory()) {
+        if (config.recursive && !excludedDirs.has(normalizedPath)) {
+          results.push(...(await walkDirectory(absolutePath)));
+        }
+        continue;
+      }
+
+      if (!entry.isFile() || !accepts(entry.name)) {
+        continue;
+      }
+
+      const stat = await fs.stat(absolutePath);
+      if (toNumber(stat.mtimeMs) > cutoffTime) {
+        continue;
+      }
+
+      results.push({
+        absolutePath,
+        fileName: entry.name,
+        relativePath: path.relative(config.sourceDir!, absolutePath) || entry.name,
+        stat,
+        signature: buildFileSignature(absolutePath, stat)
+      });
+    }
+
+    return results;
+  }
+
+  const files = await walkDirectory(config.sourceDir);
+  return files.sort((left, right) => toNumber(left.stat.mtimeMs) - toNumber(right.stat.mtimeMs)).slice(0, config.maxFiles);
 }
 
-async function archiveImportedFile(archiveDir: string, sourcePath: string, fileName: string) {
-  await fs.mkdir(archiveDir, { recursive: true });
-  const targetPath = path.join(archiveDir, fileName);
+async function moveProcessedFile(targetDir: string, sourceDir: string, sourcePath: string, relativePath: string) {
+  const normalizedRelativePath = path.relative(sourceDir, sourcePath) || relativePath;
+  const targetPath = path.join(targetDir, normalizedRelativePath);
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
   await fs.rename(sourcePath, targetPath);
 }
 
@@ -196,6 +252,9 @@ export async function runKbizStatementImport(matchTransactions: Matcher): Promis
   for (const candidate of candidates) {
     if (existingSignatures.has(candidate.signature)) {
       summary.skipped += 1;
+      if (config.archiveDir && config.archiveDuplicates) {
+        await moveProcessedFile(config.archiveDir, config.sourceDir, candidate.absolutePath, candidate.relativePath);
+      }
       continue;
     }
 
@@ -211,7 +270,7 @@ export async function runKbizStatementImport(matchTransactions: Matcher): Promis
         filePath: candidate.absolutePath,
         fileSignature: candidate.signature,
         importedAt: now(),
-        sourceCreatedAt: new Date(candidate.stat.mtimeMs),
+        sourceCreatedAt: new Date(toNumber(candidate.stat.mtimeMs)),
         payloadJson: JSON.stringify({
           fileName: candidate.fileName,
           normalized: normalized.transactions.length,
@@ -239,7 +298,7 @@ export async function runKbizStatementImport(matchTransactions: Matcher): Promis
       });
 
       if (config.archiveDir) {
-        await archiveImportedFile(config.archiveDir, candidate.absolutePath, candidate.fileName);
+        await moveProcessedFile(config.archiveDir, config.sourceDir, candidate.absolutePath, candidate.relativePath);
       }
 
       summary.imported += 1;
@@ -257,6 +316,15 @@ export async function runKbizStatementImport(matchTransactions: Matcher): Promis
     } catch (error) {
       summary.ok = false;
       summary.warnings.push(`${candidate.fileName}: ${error instanceof Error ? error.message : "unknown error"}`);
+      if (config.errorDir) {
+        try {
+          await moveProcessedFile(config.errorDir, config.sourceDir, candidate.absolutePath, candidate.relativePath);
+        } catch (moveError) {
+          summary.warnings.push(
+            `${candidate.fileName}: errorDir move failed | ${moveError instanceof Error ? moveError.message : "unknown error"}`
+          );
+        }
+      }
     }
   }
 

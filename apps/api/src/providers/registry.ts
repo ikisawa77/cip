@@ -1,4 +1,5 @@
 import type { ProviderAdapter } from "./types";
+import { peamsub24hrAdapter } from "./peamsub24hr";
 import { createScaffoldAdapter } from "./scaffold";
 import { pays24SellerAdapter } from "./pays24seller";
 import { wepayAdapter } from "./wepay";
@@ -7,7 +8,6 @@ export const providerKeys = ["promptpay", "wepay", "24payseller", "peamsub24hr",
 export type ProviderKey = (typeof providerKeys)[number];
 
 const promptpayAdapter = createScaffoldAdapter("promptpay", "PromptPay");
-const peamsub24hrAdapter = createScaffoldAdapter("peamsub24hr", "Peamsub24hr");
 const walletAdapter = createScaffoldAdapter("kbiz", "K-BIZ / Wallet Matching");
 const trueMoneyAdapter = createScaffoldAdapter("truemoney", "TrueMoney");
 const rdcwAdapter = createScaffoldAdapter("rdcw", "RDCW");

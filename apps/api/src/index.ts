@@ -50,6 +50,8 @@ import { verifyWebhookSignature } from "./lib/security";
 import { minutesFromNow, now } from "./lib/time";
 import { isProviderKey } from "./providers/registry";
 import { map24PaysellerStatus } from "./providers/pays24seller";
+import { mapPeamsub24hrStatus } from "./providers/peamsub24hr";
+import { mapTruemoneyPaymentStatus } from "./providers/truemoney";
 import { mapWepayStatus } from "./providers/wepay";
 import {
   cleanupExpiredOtps,
@@ -603,13 +605,19 @@ app.put("/api/admin/products/:id", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
-  res.json(await getAdminOrders());
+  const query = typeof _req.query.query === "string" ? _req.query.query : undefined;
+  const status = typeof _req.query.status === "string" ? _req.query.status : undefined;
+  const paymentMethod = typeof _req.query.paymentMethod === "string" ? _req.query.paymentMethod : undefined;
+  const providerKey = typeof _req.query.providerKey === "string" ? _req.query.providerKey : undefined;
+  res.json(await getAdminOrders({ query, status, paymentMethod, providerKey }));
 });
 
 app.get("/api/admin/audit-logs", requireAdmin, async (req, res) => {
   const entityType = typeof req.query.entityType === "string" ? req.query.entityType : undefined;
   const entityId = typeof req.query.entityId === "string" ? req.query.entityId : undefined;
-  res.json(await getAdminAuditLogs(entityType, entityId));
+  const action = typeof req.query.action === "string" ? req.query.action : undefined;
+  const query = typeof req.query.query === "string" ? req.query.query : undefined;
+  res.json(await getAdminAuditLogs({ entityType, entityId, action, query }));
 });
 
 app.get("/api/admin/payment-intents", requireAdmin, async (_req, res) => {
@@ -1024,6 +1032,48 @@ app.post("/api/webhooks/promptpay", async (req, res) => {
   res.status(result.ok ? 200 : 400).json(result);
 });
 
+app.post("/api/webhooks/truemoney", async (req, res) => {
+  const truemoney = await getProviderConfigSnapshot("truemoney");
+  const configuredSecret =
+    typeof truemoney.config.callbackSecret === "string" && truemoney.config.callbackSecret.trim()
+      ? truemoney.config.callbackSecret.trim()
+      : null;
+  const suppliedSecret = String(req.header("x-provider-secret") ?? req.body.callbackSecret ?? "");
+
+  if (configuredSecret && suppliedSecret !== configuredSecret) {
+    res.status(403).json({ message: "invalid callback secret" });
+    return;
+  }
+
+  const referenceCode = String(req.body.referenceCode ?? req.body.reference ?? "");
+  if (!referenceCode) {
+    res.status(400).json({ message: "missing referenceCode" });
+    return;
+  }
+
+  const normalizedStatus = mapTruemoneyPaymentStatus(req.body.status ?? req.body.result ?? req.body.paymentStatus);
+  if (normalizedStatus !== "paid") {
+    res.status(202).json({
+      ok: true,
+      ignored: true,
+      status: normalizedStatus,
+      referenceCode
+    });
+    return;
+  }
+
+  const amountCents = parseWebhookAmountCents(req.body.amountCents ?? req.body.amount ?? req.body.redeemedAmount);
+  const result =
+    amountCents === null
+      ? { ok: await settlePaymentByReference(referenceCode, "truemoney", { ...req.body, normalizedStatus }) }
+      : await settlePaymentByReferenceWithAmount(referenceCode, "truemoney", amountCents, {
+          ...req.body,
+          normalizedStatus
+        });
+
+  res.status(result.ok ? 200 : 400).json(result);
+});
+
 app.post("/api/webhooks/24payseller", async (req, res) => {
   const referenceCode = String(req.body.referenceCode ?? req.body.reference ?? "");
   if (!referenceCode) {
@@ -1078,6 +1128,61 @@ app.post("/api/webhooks/24payseller/order-update", async (req, res) => {
             : null,
     status,
     note: typeof req.body.note === "string" ? req.body.note : `24Payseller callback status=${rawStatus}`,
+    payload: { ...req.body, normalizedStatus: status },
+    deliveryPayload
+  });
+
+  res.status(result.ok ? 200 : 404).json(result);
+});
+
+app.post("/api/webhooks/peamsub24hr/order-update", async (req, res) => {
+  const peamsub24hr = await getProviderConfigSnapshot("peamsub24hr");
+  const configuredSecret =
+    typeof peamsub24hr.config.callbackSecret === "string" && peamsub24hr.config.callbackSecret.trim()
+      ? peamsub24hr.config.callbackSecret.trim()
+      : null;
+  const suppliedSecret = String(req.header("x-provider-secret") ?? req.body.callbackSecret ?? "");
+
+  if (configuredSecret && suppliedSecret !== configuredSecret) {
+    res.status(403).json({ message: "invalid callback secret" });
+    return;
+  }
+
+  const rawStatus = String(req.body.status ?? "").trim();
+  if (!rawStatus) {
+    res.status(400).json({ message: "missing status" });
+    return;
+  }
+
+  const status = mapPeamsub24hrStatus(rawStatus);
+  const deliveryPayloadCandidate =
+    typeof req.body.deliveryPayload === "string"
+      ? req.body.deliveryPayload
+      : req.body.credentials ??
+        (req.body.accountEmail || req.body.accountPassword
+          ? {
+              email: req.body.accountEmail ?? null,
+              password: req.body.accountPassword ?? null
+            }
+          : null);
+  const deliveryPayload =
+    typeof deliveryPayloadCandidate === "string"
+      ? deliveryPayloadCandidate
+      : deliveryPayloadCandidate && typeof deliveryPayloadCandidate === "object"
+        ? JSON.stringify(deliveryPayloadCandidate, null, 2)
+        : null;
+
+  const result = await applyProviderOrderUpdate({
+    providerKey: "peamsub24hr",
+    orderId: typeof req.body.orderId === "string" ? req.body.orderId : null,
+    providerOrderId:
+      typeof req.body.providerOrderId === "string"
+        ? req.body.providerOrderId
+        : typeof req.body.subscriptionId === "string"
+          ? req.body.subscriptionId
+          : null,
+    status,
+    note: typeof req.body.note === "string" ? req.body.note : `Peamsub24hr callback status=${rawStatus}`,
     payload: { ...req.body, normalizedStatus: status },
     deliveryPayload
   });

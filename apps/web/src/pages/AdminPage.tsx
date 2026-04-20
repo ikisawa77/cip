@@ -91,6 +91,9 @@ type OrderRow = {
   userId?: string;
   userEmail?: string;
   userDisplayName?: string;
+  providerKey?: string | null;
+  providerOrderId?: string | null;
+  providerStatus?: string | null;
 };
 
 type AuditLogRow = {
@@ -100,6 +103,15 @@ type AuditLogRow = {
   entityId: string;
   action: string;
   detail: string;
+  createdAt: string;
+};
+
+type WebhookEventRow = {
+  id: string;
+  providerKey: string;
+  eventType: string;
+  payloadJson: string;
+  processed: boolean;
   createdAt: string;
 };
 
@@ -202,7 +214,11 @@ const providerConfigExamples: Record<string, { title: string; description: strin
     value: {
       sourceDir: "C:\\\\bank-export\\\\kbiz",
       archiveDir: "C:\\\\bank-export\\\\kbiz\\\\processed",
+      errorDir: "C:\\\\bank-export\\\\kbiz\\\\error",
       filePattern: "kbiz.*\\.(csv|json)$",
+      recursive: true,
+      stableMs: 5000,
+      archiveDuplicates: true,
       maxFiles: 5
     }
   },
@@ -237,6 +253,32 @@ const providerConfigExamples: Record<string, { title: string; description: strin
         productGroup: "id-pass",
         source: "cip-store"
       }
+    }
+  },
+  peamsub24hr: {
+    title: "ตัวอย่าง config สำหรับ Peamsub24hr bridge",
+    description: "เหมาะกับสินค้า premium หรือ subscription โดยระบบจะส่ง formInput ไปให้ provider และรอ callback กลับมาพร้อม credential payload",
+    value: {
+      mode: "webhook",
+      endpoint: "https://provider.example.com/api/premium-orders",
+      method: "POST",
+      apiKey: "replace-me",
+      authHeaderName: "Authorization",
+      authScheme: "Bearer",
+      callbackSecret: "peamsub24hr-dev-secret",
+      staticPayload: {
+        packageType: "premium",
+        source: "cip-store"
+      }
+    }
+  },
+  truemoney: {
+    title: "TrueMoney top-up bridge",
+    description: "Webhook config example for truemoney_gift payment intents and external bridge callbacks.",
+    value: {
+      callbackSecret: "truemoney-dev-secret",
+      acceptedStatuses: ["success", "redeemed", "completed"],
+      notes: "POST /api/webhooks/truemoney with referenceCode and status=success"
     }
   }
 };
@@ -325,6 +367,20 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleString("th-TH");
 }
 
+function buildQueryString(input: Record<string, string | null | undefined>) {
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(input)) {
+    const normalizedValue = value?.trim();
+    if (normalizedValue) {
+      params.set(key, normalizedValue);
+    }
+  }
+
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
 function getCategoryBadgeText(category: CategoryRow) {
   return `${category.totalProducts} สินค้า`;
 }
@@ -388,9 +444,109 @@ const overviewCardMeta = [
   { label: "งานค้างในคิว", icon: Workflow }
 ] as const;
 
+const adminFilterStorageKey = "cip.admin.saved-filters.v1";
+
+type AdminSavedFilters = {
+  paymentSearch: string;
+  paymentProviderFilter: string;
+  paymentStatusFilter: string;
+  orderSearch: string;
+  orderStatusFilter: string;
+  orderPaymentMethodFilter: string;
+  orderProviderFilter: string;
+  auditSearch: string;
+  auditEntityTypeFilter: string;
+  auditActionFilter: string;
+  webhookSearch: string;
+  webhookProviderFilter: string;
+  webhookEventTypeFilter: string;
+};
+
+function readAdminSavedFilters(): Partial<AdminSavedFilters> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(adminFilterStorageKey);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+    return typeof parsed === "object" && parsed && !Array.isArray(parsed) ? (parsed as Partial<AdminSavedFilters>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAdminSavedFilters(input: Partial<AdminSavedFilters>) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(adminFilterStorageKey, JSON.stringify(input));
+}
+
+function clearAdminSavedFilters() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(adminFilterStorageKey);
+}
+
+function getTotalPages(totalItems: number, pageSize: number) {
+  return Math.max(1, Math.ceil(totalItems / pageSize));
+}
+
+function paginateItems<T>(items: T[], page: number, pageSize: number) {
+  const totalPages = getTotalPages(items.length, pageSize);
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const start = (safePage - 1) * pageSize;
+
+  return {
+    page: safePage,
+    totalPages,
+    items: items.slice(start, start + pageSize)
+  };
+}
+
+function PaginationControls({
+  page,
+  totalPages,
+  onPageChange
+}: {
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[1.4rem] border border-[var(--line)] bg-white/88 px-4 py-3 text-sm text-slate-600">
+      <div>
+        หน้า <span className="font-semibold text-slate-950">{page}</span> จาก{" "}
+        <span className="font-semibold text-slate-950">{totalPages}</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button className="secondary-button rounded-full px-4 py-2 text-xs" disabled={page <= 1} onClick={() => onPageChange(page - 1)} type="button">
+          ก่อนหน้า
+        </button>
+        <button className="secondary-button rounded-full px-4 py-2 text-xs" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} type="button">
+          ถัดไป
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function AdminPage() {
   const { user, openAuth } = useAuth();
   const queryClient = useQueryClient();
+  const [initialSavedFilters] = useState(readAdminSavedFilters);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [providerConfigJson, setProviderConfigJson] = useState("{}");
   const [providerEnabled, setProviderEnabled] = useState(false);
@@ -418,9 +574,27 @@ export function AdminPage() {
   const [inventoryProductFilter, setInventoryProductFilter] = useState("all");
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentSearch, setPaymentSearch] = useState(initialSavedFilters.paymentSearch ?? "");
+  const [paymentProviderFilter, setPaymentProviderFilter] = useState(initialSavedFilters.paymentProviderFilter ?? "all");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState(initialSavedFilters.paymentStatusFilter ?? "all");
+  const [paymentPage, setPaymentPage] = useState(1);
   const [orderMessage, setOrderMessage] = useState<string | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [orderSearch, setOrderSearch] = useState(initialSavedFilters.orderSearch ?? "");
+  const [orderStatusFilter, setOrderStatusFilter] = useState(initialSavedFilters.orderStatusFilter ?? "all");
+  const [orderPaymentMethodFilter, setOrderPaymentMethodFilter] = useState(initialSavedFilters.orderPaymentMethodFilter ?? "all");
+  const [orderProviderFilter, setOrderProviderFilter] = useState(initialSavedFilters.orderProviderFilter ?? "all");
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [auditSearch, setAuditSearch] = useState(initialSavedFilters.auditSearch ?? "");
+  const [auditEntityTypeFilter, setAuditEntityTypeFilter] = useState(initialSavedFilters.auditEntityTypeFilter ?? "all");
+  const [auditActionFilter, setAuditActionFilter] = useState(initialSavedFilters.auditActionFilter ?? "all");
+  const [auditPage, setAuditPage] = useState(1);
+  const [webhookSearch, setWebhookSearch] = useState(initialSavedFilters.webhookSearch ?? "");
+  const [webhookProviderFilter, setWebhookProviderFilter] = useState(initialSavedFilters.webhookProviderFilter ?? "all");
+  const [webhookEventTypeFilter, setWebhookEventTypeFilter] = useState(initialSavedFilters.webhookEventTypeFilter ?? "all");
+  const [webhookPage, setWebhookPage] = useState(1);
+  const [selectedWebhookId, setSelectedWebhookId] = useState<string | null>(null);
   const [paymentMatcherPayload, setPaymentMatcherPayload] = useState(
     JSON.stringify(
       [
@@ -479,8 +653,16 @@ export function AdminPage() {
   });
 
   const orderQuery = useQuery({
-    queryKey: ["admin", "orders"],
-    queryFn: () => apiFetch<OrderRow[]>("/api/admin/orders"),
+    queryKey: ["admin", "orders", orderSearch, orderStatusFilter, orderPaymentMethodFilter, orderProviderFilter],
+    queryFn: () =>
+      apiFetch<OrderRow[]>(
+        `/api/admin/orders${buildQueryString({
+          query: orderSearch,
+          status: orderStatusFilter !== "all" ? orderStatusFilter : undefined,
+          paymentMethod: orderPaymentMethodFilter !== "all" ? orderPaymentMethodFilter : undefined,
+          providerKey: orderProviderFilter !== "all" ? orderProviderFilter : undefined
+        })}`
+      ),
     enabled: user?.role === "admin"
   });
 
@@ -491,10 +673,20 @@ export function AdminPage() {
   });
 
   const auditLogsQuery = useQuery({
-    queryKey: ["admin", "audit-logs", selectedOrderId],
+    queryKey: ["admin", "audit-logs", selectedOrderId, auditSearch, auditEntityTypeFilter, auditActionFilter],
     queryFn: () =>
       apiFetch<AuditLogRow[]>(
-        selectedOrderId ? `/api/admin/audit-logs?entityType=order&entityId=${selectedOrderId}` : "/api/admin/audit-logs"
+        `/api/admin/audit-logs${buildQueryString({
+          entityType:
+            selectedOrderId || auditEntityTypeFilter === "all"
+              ? selectedOrderId
+                ? "order"
+                : undefined
+              : auditEntityTypeFilter,
+          entityId: selectedOrderId,
+          action: auditActionFilter !== "all" ? auditActionFilter : undefined,
+          query: auditSearch
+        })}`
       ),
     enabled: user?.role === "admin"
   });
@@ -519,6 +711,11 @@ export function AdminPage() {
   const paymentIntentsQuery = useQuery({
     queryKey: ["admin", "payment-intents"],
     queryFn: () => apiFetch<PaymentIntentRow[]>("/api/admin/payment-intents"),
+    enabled: user?.role === "admin"
+  });
+  const webhooksQuery = useQuery({
+    queryKey: ["admin", "webhooks"],
+    queryFn: () => apiFetch<WebhookEventRow[]>("/api/admin/webhooks"),
     enabled: user?.role === "admin"
   });
 
@@ -942,17 +1139,104 @@ export function AdminPage() {
   }, [providerQuery.data, selectedProvider]);
 
   useEffect(() => {
-    if (selectedOrderId) {
-      return;
-    }
-
-    const firstOrder = orderQuery.data?.[0];
+    const operationsPageStart = (ordersPage - 1) * 6;
+    const operationsPageOrders = (orderQuery.data ?? []).slice(operationsPageStart, operationsPageStart + 6);
+    const firstOrder = operationsPageOrders[0];
     if (!firstOrder) {
+      if (selectedOrderId) {
+        setSelectedOrderId(null);
+      }
       return;
     }
 
-    setSelectedOrderId(firstOrder.id);
-  }, [orderQuery.data, selectedOrderId]);
+    const stillExists = operationsPageOrders.some((order) => order.id === selectedOrderId);
+    if (!selectedOrderId || !stillExists) {
+      setSelectedOrderId(firstOrder.id);
+    }
+  }, [orderQuery.data, ordersPage, selectedOrderId]);
+
+  useEffect(() => {
+    writeAdminSavedFilters({
+      paymentSearch,
+      paymentProviderFilter,
+      paymentStatusFilter,
+      orderSearch,
+      orderStatusFilter,
+      orderPaymentMethodFilter,
+      orderProviderFilter,
+      auditSearch,
+      auditEntityTypeFilter,
+      auditActionFilter,
+      webhookSearch,
+      webhookProviderFilter,
+      webhookEventTypeFilter
+    });
+  }, [
+    paymentSearch,
+    paymentProviderFilter,
+    paymentStatusFilter,
+    orderSearch,
+    orderStatusFilter,
+    orderPaymentMethodFilter,
+    orderProviderFilter,
+    auditSearch,
+    auditEntityTypeFilter,
+    auditActionFilter,
+    webhookSearch,
+    webhookProviderFilter,
+    webhookEventTypeFilter
+  ]);
+
+  useEffect(() => {
+    setPaymentPage(1);
+  }, [paymentSearch, paymentProviderFilter, paymentStatusFilter]);
+
+  useEffect(() => {
+    setOrdersPage(1);
+  }, [orderSearch, orderStatusFilter, orderPaymentMethodFilter, orderProviderFilter]);
+
+  useEffect(() => {
+    setAuditPage(1);
+  }, [auditSearch, auditEntityTypeFilter, auditActionFilter, selectedOrderId]);
+
+  useEffect(() => {
+    setWebhookPage(1);
+  }, [webhookSearch, webhookProviderFilter, webhookEventTypeFilter]);
+
+  useEffect(() => {
+    const filteredWebhookRows = (webhooksQuery.data ?? []).filter((event) => {
+      if (webhookProviderFilter !== "all" && event.providerKey !== webhookProviderFilter) {
+        return false;
+      }
+
+      if (webhookEventTypeFilter !== "all" && event.eventType !== webhookEventTypeFilter) {
+        return false;
+      }
+
+      const normalizedSearch = webhookSearch.trim().toLowerCase();
+      if (!normalizedSearch) {
+        return true;
+      }
+
+      return [event.providerKey, event.eventType, event.payloadJson, event.id].some((value) =>
+        value.toLowerCase().includes(normalizedSearch)
+      );
+    });
+    const webhookPageStart = (webhookPage - 1) * 8;
+    const firstWebhook = filteredWebhookRows.slice(webhookPageStart, webhookPageStart + 8)[0] ?? null;
+
+    if (!firstWebhook) {
+      if (selectedWebhookId) {
+        setSelectedWebhookId(null);
+      }
+      return;
+    }
+
+    const stillExists = filteredWebhookRows.some((event) => event.id === selectedWebhookId);
+    if (!selectedWebhookId || !stillExists) {
+      setSelectedWebhookId(firstWebhook.id);
+    }
+  }, [selectedWebhookId, webhookEventTypeFilter, webhookPage, webhookProviderFilter, webhookSearch, webhooksQuery.data]);
 
   useEffect(() => {
     if (!homepageContentQuery.data) {
@@ -1007,6 +1291,49 @@ export function AdminPage() {
   const products = productsQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
   const inventoryItems = inventoryItemsQuery.data ?? [];
+  const paymentIntents = (paymentIntentsQuery.data ?? []).filter((intent) => {
+    if (paymentProviderFilter !== "all" && intent.provider !== paymentProviderFilter) {
+      return false;
+    }
+
+    if (paymentStatusFilter !== "all" && intent.status !== paymentStatusFilter) {
+      return false;
+    }
+
+    const normalizedSearch = paymentSearch.trim().toLowerCase();
+    if (!normalizedSearch) {
+      return true;
+    }
+
+    return [intent.referenceCode, intent.userEmail, intent.userDisplayName, intent.id, intent.targetId]
+      .filter(Boolean)
+      .some((value) => value.toLowerCase().includes(normalizedSearch));
+  });
+  const pagedPaymentIntents = paginateItems(paymentIntents, paymentPage, 8);
+  const orders = orderQuery.data ?? [];
+  const pagedOrders = paginateItems(orders, ordersPage, 8);
+  const operationsOrders = paginateItems(orders, ordersPage, 6);
+  const auditLogs = auditLogsQuery.data ?? [];
+  const pagedAuditLogs = paginateItems(auditLogs, auditPage, 8);
+  const webhooks = (webhooksQuery.data ?? []).filter((event) => {
+    if (webhookProviderFilter !== "all" && event.providerKey !== webhookProviderFilter) {
+      return false;
+    }
+
+    if (webhookEventTypeFilter !== "all" && event.eventType !== webhookEventTypeFilter) {
+      return false;
+    }
+
+    const normalizedSearch = webhookSearch.trim().toLowerCase();
+    if (!normalizedSearch) {
+      return true;
+    }
+
+    return [event.providerKey, event.eventType, event.payloadJson, event.id].some((value) => value.toLowerCase().includes(normalizedSearch));
+  });
+  const pagedWebhooks = paginateItems(webhooks, webhookPage, 8);
+  const selectedWebhook = webhooks.find((event) => event.id === selectedWebhookId) ?? pagedWebhooks.items[0] ?? null;
+  const webhookEventTypes = Array.from(new Set((webhooksQuery.data ?? []).map((event) => event.eventType))).sort();
   const filteredProducts =
     inventoryCategoryFilter === "all" ? products : products.filter((product) => product.categoryId === inventoryCategoryFilter);
   const filteredInventoryItems = inventoryItems.filter((item) => {
@@ -1020,6 +1347,39 @@ export function AdminPage() {
 
     return true;
   });
+
+  function resetPaymentFilters() {
+    setPaymentSearch("");
+    setPaymentProviderFilter("all");
+    setPaymentStatusFilter("all");
+  }
+
+  function resetOrderFilters() {
+    setOrderSearch("");
+    setOrderStatusFilter("all");
+    setOrderPaymentMethodFilter("all");
+    setOrderProviderFilter("all");
+  }
+
+  function resetAuditFilters() {
+    setAuditSearch("");
+    setAuditEntityTypeFilter("all");
+    setAuditActionFilter("all");
+  }
+
+  function resetWebhookFilters() {
+    setWebhookSearch("");
+    setWebhookProviderFilter("all");
+    setWebhookEventTypeFilter("all");
+  }
+
+  function clearSavedAdminFilters() {
+    clearAdminSavedFilters();
+    resetPaymentFilters();
+    resetOrderFilters();
+    resetAuditFilters();
+    resetWebhookFilters();
+  }
 
   if (!user) {
     return (
@@ -2253,12 +2613,33 @@ export function AdminPage() {
               <p className="mt-2 text-sm muted-text">ใช้ยืนยันการโอนจากหลังบ้าน หรือทำเครื่องหมายว่า failed / expired ได้โดยไม่ต้องพึ่งปุ่ม dev</p>
             </div>
             <div className="rounded-full border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-slate-600">
-              ทั้งหมด {paymentIntentsQuery.data?.length ?? 0} รายการ
+              ทั้งหมด {paymentIntents.length} รายการ
             </div>
           </div>
 
+          <div className="mt-4 grid gap-3 xl:grid-cols-[1.3fr_0.8fr_0.8fr_auto]">
+            <input className="input-field" onChange={(event) => setPaymentSearch(event.target.value)} placeholder="ค้นหา reference / user / target" value={paymentSearch} />
+            <select className="input-field" onChange={(event) => setPaymentProviderFilter(event.target.value)} value={paymentProviderFilter}>
+              <option value="all">ทุก provider</option>
+              <option value="promptpay_qr">promptpay_qr</option>
+              <option value="truemoney_gift">truemoney_gift</option>
+              <option value="kbiz_match">kbiz_match</option>
+            </select>
+            <select className="input-field" onChange={(event) => setPaymentStatusFilter(event.target.value)} value={paymentStatusFilter}>
+              <option value="all">ทุกสถานะ</option>
+              <option value="pending">pending</option>
+              <option value="paid">paid</option>
+              <option value="expired">expired</option>
+              <option value="failed">failed</option>
+            </select>
+            <button className="secondary-button rounded-full px-4 py-2 text-xs" onClick={resetPaymentFilters} type="button">
+              รีเซ็ต filter
+            </button>
+          </div>
+          <div className="mt-3 text-xs text-slate-500">ระบบจะจำ filter ล่าสุดของแอดมินไว้บนเครื่องนี้ให้อัตโนมัติ</div>
+
           <div className="mt-4 grid gap-3">
-            {paymentIntentsQuery.data?.slice(0, 8).map((intent) => (
+            {pagedPaymentIntents.items.map((intent) => (
               <div className="panel-soft rounded-[1.6rem] px-4 py-4" key={intent.id}>
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0 flex-1">
@@ -2296,10 +2677,17 @@ export function AdminPage() {
                     <button
                       className="secondary-button rounded-full px-4 py-2 text-xs"
                       onClick={() => {
-                          const command = `pnpm --filter @cip/api webhook:promptpay --payment-intent-id ${intent.id}`;
+                        const command =
+                          intent.provider === "truemoney_gift"
+                            ? `curl -X POST http://127.0.0.1:3001/api/webhooks/truemoney -H "Content-Type: application/json" -d "{\\"referenceCode\\":\\"${intent.referenceCode}\\",\\"status\\":\\"success\\"}"`
+                            : `pnpm --filter @cip/api webhook:promptpay --payment-intent-id ${intent.id}`;
                         void navigator.clipboard.writeText(command);
                         setPaymentError(null);
-                        setPaymentMessage(`คัดลอกคำสั่งยิง signed webhook สำหรับ ${intent.referenceCode} แล้ว`);
+                        setPaymentMessage(
+                          intent.provider === "truemoney_gift"
+                            ? `คัดลอกคำสั่ง webhook สำหรับ ${intent.referenceCode} แล้ว`
+                            : `คัดลอกคำสั่งยิง signed webhook สำหรับ ${intent.referenceCode} แล้ว`
+                        );
                       }}
                       type="button"
                     >
@@ -2333,10 +2721,11 @@ export function AdminPage() {
                 </div>
               </div>
             ))}
-            {paymentIntentsQuery.data?.length === 0 ? (
+            {paymentIntents.length === 0 ? (
               <div className="rounded-[1.6rem] border border-dashed border-[var(--line)] px-4 py-5 text-sm muted-text">ยังไม่มี payment intent ให้จัดการ</div>
             ) : null}
           </div>
+          <PaginationControls onPageChange={setPaymentPage} page={pagedPaymentIntents.page} totalPages={pagedPaymentIntents.totalPages} />
 
           <div className="mt-5 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="rounded-[1.85rem] border border-[var(--line)] bg-white/92 px-5 py-5 shadow-[0_24px_80px_rgba(15,23,42,0.06)]">
@@ -2481,8 +2870,39 @@ export function AdminPage() {
             <p className="section-label">Recent Orders</p>
           </div>
           <h2 className="mt-2 text-2xl font-semibold text-slate-950">ออเดอร์ล่าสุด</h2>
+          <div className="mt-4 grid gap-3 lg:grid-cols-4">
+            <input className="input-field" onChange={(event) => setOrderSearch(event.target.value)} placeholder="ค้นหา order / email / note / provider ref" value={orderSearch} />
+            <select className="input-field" onChange={(event) => setOrderStatusFilter(event.target.value)} value={orderStatusFilter}>
+              <option value="all">ทุกสถานะ</option>
+              <option value="pending_payment">pending_payment</option>
+              <option value="paid">paid</option>
+              <option value="processing">processing</option>
+              <option value="fulfilled">fulfilled</option>
+              <option value="failed">failed</option>
+              <option value="manual_review">manual_review</option>
+              <option value="refunded">refunded</option>
+            </select>
+            <select className="input-field" onChange={(event) => setOrderPaymentMethodFilter(event.target.value)} value={orderPaymentMethodFilter}>
+              <option value="all">ทุกช่องทางจ่าย</option>
+              <option value="wallet">wallet</option>
+              <option value="promptpay_qr">promptpay_qr</option>
+            </select>
+            <select className="input-field" onChange={(event) => setOrderProviderFilter(event.target.value)} value={orderProviderFilter}>
+              <option value="all">ทุก provider</option>
+              <option value="wepay">wepay</option>
+              <option value="24payseller">24payseller</option>
+              <option value="peamsub24hr">peamsub24hr</option>
+              <option value="kbiz">kbiz</option>
+            </select>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-slate-500">ระบบจะจำ filter ล่าสุดของแอดมินไว้บนเครื่องนี้ให้อัตโนมัติ</div>
+            <button className="secondary-button rounded-full px-4 py-2 text-xs" onClick={resetOrderFilters} type="button">
+              รีเซ็ต filter
+            </button>
+          </div>
           <div className="mt-4 space-y-3">
-            {orderQuery.data?.slice(0, 8).map((order) => (
+            {pagedOrders.items.map((order) => (
               <div className="panel-soft rounded-[1.5rem] px-4 py-4" key={order.id}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -2491,6 +2911,12 @@ export function AdminPage() {
                       {order.id}
                     </div>
                     <div className="mt-1 text-sm muted-text">{formatDate(order.createdAt)}</div>
+                    <div className="mt-2 text-xs text-slate-500">
+                      {(order.userDisplayName || "-")} • {(order.userEmail || "-")}
+                    </div>
+                    {order.providerKey ? (
+                      <div className="mt-2 text-xs text-slate-500">{order.providerKey} • {order.providerOrderId || "-"} • {order.providerStatus || "-"}</div>
+                    ) : null}
                     {order.notes ? <div className="mt-2 text-sm muted-text">{order.notes}</div> : null}
                   </div>
                   <div className="text-right">
@@ -2501,6 +2927,7 @@ export function AdminPage() {
               </div>
             ))}
           </div>
+          <PaginationControls onPageChange={setOrdersPage} page={pagedOrders.page} totalPages={pagedOrders.totalPages} />
         </section>
       </div>
 
@@ -2514,7 +2941,7 @@ export function AdminPage() {
         <h2 className="mt-2 text-2xl font-semibold text-slate-950">order detail, refund และ audit log</h2>
         <div className="mt-4 grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
           <div className="space-y-3">
-            {orderQuery.data?.slice(0, 10).map((order) => {
+            {operationsOrders.items.map((order) => {
               const isSelected = order.id === selectedOrderId;
               return (
                 <button
@@ -2535,6 +2962,9 @@ export function AdminPage() {
                       <div className="mt-2 text-xs text-slate-500">
                         {(order.userDisplayName || "-")} • {(order.userEmail || "-")}
                       </div>
+                      {order.providerKey ? (
+                        <div className="mt-2 text-xs text-slate-500">{order.providerKey} • {order.providerOrderId || "-"} • {order.providerStatus || "-"}</div>
+                      ) : null}
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-medium text-slate-900">{formatMoney(order.totalCents)}</div>
@@ -2544,6 +2974,7 @@ export function AdminPage() {
                 </button>
               );
             })}
+            <PaginationControls onPageChange={setOrdersPage} page={operationsOrders.page} totalPages={operationsOrders.totalPages} />
           </div>
           <div className="panel-soft rounded-[1.75rem] p-5">
             {selectedOrderDetailQuery.data ? (
@@ -2612,8 +3043,40 @@ export function AdminPage() {
             )}
           </div>
         </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <input className="input-field" onChange={(event) => setAuditSearch(event.target.value)} placeholder="ค้นหา action / detail / entity / actor" value={auditSearch} />
+          <select className="input-field" onChange={(event) => setAuditEntityTypeFilter(event.target.value)} value={auditEntityTypeFilter}>
+            <option value="all">ทุก entity type</option>
+            <option value="order">order</option>
+            <option value="provider_config">provider_config</option>
+            <option value="payment_intent">payment_intent</option>
+            <option value="inventory_item">inventory_item</option>
+            <option value="category">category</option>
+            <option value="site_content">site_content</option>
+          </select>
+          <select className="input-field" onChange={(event) => setAuditActionFilter(event.target.value)} value={auditActionFilter}>
+            <option value="all">ทุก action</option>
+            <option value="upsert">upsert</option>
+            <option value="refund">refund</option>
+            <option value="bulk_import">bulk_import</option>
+            <option value="admin_status_processing">admin_status_processing</option>
+            <option value="admin_status_manual_review">admin_status_manual_review</option>
+            <option value="admin_status_fulfilled">admin_status_fulfilled</option>
+          </select>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs text-slate-500">ถ้าเลือกออเดอร์อยู่ ระบบจะล็อก audit ให้ดูเฉพาะ order นั้นก่อน</div>
+          <div className="flex flex-wrap gap-2">
+            <button className="secondary-button rounded-full px-4 py-2 text-xs" onClick={resetAuditFilters} type="button">
+              รีเซ็ต filter
+            </button>
+            <button className="secondary-button rounded-full px-4 py-2 text-xs" onClick={clearSavedAdminFilters} type="button">
+              ล้าง filter ที่จำไว้
+            </button>
+          </div>
+        </div>
         <div className="mt-4 space-y-3">
-          {auditLogsQuery.data?.slice(0, 8).map((log) => (
+          {pagedAuditLogs.items.map((log) => (
             <div className="panel-soft rounded-[1.5rem] px-4 py-4" key={`audit-${log.id}`}>
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -2625,6 +3088,103 @@ export function AdminPage() {
               </div>
             </div>
           ))}
+        </div>
+        <PaginationControls onPageChange={setAuditPage} page={pagedAuditLogs.page} totalPages={pagedAuditLogs.totalPages} />
+      </section>
+
+      <section className="panel rounded-[2.5rem] p-6">
+        <div className="section-head">
+          <div className="section-head__icon">
+            <ScanSearch size={18} />
+          </div>
+          <p className="section-label">Webhook Viewer</p>
+        </div>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-semibold text-slate-950">ดู webhook และ payload ล่าสุดจากหลังบ้าน</h2>
+            <p className="mt-2 text-sm muted-text">ใช้ไล่ callback จาก provider, payment matcher และ event ภายในได้จากหน้าจอเดียว</p>
+          </div>
+          <div className="rounded-full border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-slate-600">
+            ทั้งหมด {webhooks.length} รายการ
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 xl:grid-cols-[1.2fr_0.8fr_0.9fr_auto]">
+          <input className="input-field" onChange={(event) => setWebhookSearch(event.target.value)} placeholder="ค้นหา provider / event / payload / id" value={webhookSearch} />
+          <select className="input-field" onChange={(event) => setWebhookProviderFilter(event.target.value)} value={webhookProviderFilter}>
+            <option value="all">ทุก provider</option>
+            <option value="promptpay">promptpay</option>
+            <option value="promptpay_matcher">promptpay_matcher</option>
+            <option value="truemoney">truemoney</option>
+            <option value="wepay">wepay</option>
+            <option value="24payseller">24payseller</option>
+            <option value="peamsub24hr">peamsub24hr</option>
+            <option value="kbiz">kbiz</option>
+          </select>
+          <select className="input-field" onChange={(event) => setWebhookEventTypeFilter(event.target.value)} value={webhookEventTypeFilter}>
+            <option value="all">ทุก event type</option>
+            {webhookEventTypes.map((eventType) => (
+              <option key={eventType} value={eventType}>
+                {eventType}
+              </option>
+            ))}
+          </select>
+          <button className="secondary-button rounded-full px-4 py-2 text-xs" onClick={resetWebhookFilters} type="button">
+            รีเซ็ต filter
+          </button>
+        </div>
+        <div className="mt-4 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <div className="space-y-3">
+            {pagedWebhooks.items.map((event) => {
+              const isSelected = selectedWebhook?.id === event.id;
+              return (
+                <button
+                  className={`panel-soft w-full rounded-[1.5rem] px-4 py-4 text-left transition ${isSelected ? "border border-[var(--brand)] bg-white" : ""}`}
+                  key={event.id}
+                  onClick={() => setSelectedWebhookId(event.id)}
+                  type="button"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">{event.providerKey}</div>
+                      <div className="mt-1 text-xs uppercase tracking-[0.2em] text-[var(--brand)]">{event.eventType}</div>
+                      <div className="mt-2 text-xs text-slate-500">{formatDate(event.createdAt)}</div>
+                    </div>
+                    <div className={`rounded-full px-3 py-1 text-[11px] font-medium ${event.processed ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                      {event.processed ? "processed" : "pending"}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+            {webhooks.length === 0 ? (
+              <div className="rounded-[1.6rem] border border-dashed border-[var(--line)] px-4 py-5 text-sm muted-text">ยังไม่มี webhook event ให้ตรวจสอบ</div>
+            ) : null}
+            <PaginationControls onPageChange={setWebhookPage} page={pagedWebhooks.page} totalPages={pagedWebhooks.totalPages} />
+          </div>
+          <div className="panel-soft rounded-[1.75rem] p-5">
+            {selectedWebhook ? (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.24em] text-[var(--brand)]">Selected Event</div>
+                    <div className="mt-2 text-xl font-semibold text-slate-950">{selectedWebhook.eventType}</div>
+                    <div className="mt-2 text-sm text-slate-600">
+                      {selectedWebhook.providerKey} • {formatDate(selectedWebhook.createdAt)}
+                    </div>
+                  </div>
+                  <div className="rounded-full bg-[var(--surface-2)] px-3 py-2 text-xs uppercase tracking-[0.2em] text-slate-700">
+                    {selectedWebhook.processed ? "processed" : "pending"}
+                  </div>
+                </div>
+                <div className="mt-4 rounded-[1.25rem] bg-white/80 px-4 py-3">
+                  <div className="font-medium text-slate-950">Webhook Payload</div>
+                  <pre className="mt-2 overflow-auto rounded-xl bg-slate-950 px-3 py-3 text-xs text-slate-100">{selectedWebhook.payloadJson}</pre>
+                </div>
+              </>
+            ) : (
+              <div className="text-sm text-slate-500">เลือก webhook event เพื่อดู payload แบบเต็ม</div>
+            )}
+          </div>
         </div>
       </section>
 

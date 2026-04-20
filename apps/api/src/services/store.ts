@@ -598,7 +598,12 @@ export async function getOrdersForUser(userId: string) {
   return db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
 }
 
-export async function getAdminOrders() {
+export async function getAdminOrders(orderFilters?: {
+  query?: string;
+  status?: string;
+  paymentMethod?: string;
+  providerKey?: string;
+}) {
   const orderRows = await db.select().from(orders).orderBy(desc(orders.createdAt));
   const userIds = Array.from(new Set(orderRows.map((row) => row.userId)));
   const userRows =
@@ -613,28 +618,96 @@ export async function getAdminOrders() {
           .where(inArray(users.id, userIds))
       : [];
   const userMap = new Map(userRows.map((row) => [row.id, row]));
+  const providerLinks =
+    orderRows.length > 0
+      ? await db
+          .select({
+            orderId: providerOrderLinks.orderId,
+            providerKey: providerOrderLinks.providerKey,
+            providerOrderId: providerOrderLinks.providerOrderId,
+            latestStatus: providerOrderLinks.latestStatus
+          })
+          .from(providerOrderLinks)
+          .where(inArray(providerOrderLinks.orderId, orderRows.map((row) => row.id)))
+      : [];
+  const providerLinkMap = new Map(providerLinks.map((row) => [row.orderId, row]));
 
-  return orderRows.map((row) => ({
-    ...row,
-    userEmail: userMap.get(row.userId)?.email ?? "",
-    userDisplayName: userMap.get(row.userId)?.displayName ?? ""
-  }));
+  const normalizedQuery = orderFilters?.query?.trim().toLowerCase() ?? "";
+  const normalizedStatus = orderFilters?.status?.trim().toLowerCase() ?? "all";
+  const normalizedPaymentMethod = orderFilters?.paymentMethod?.trim().toLowerCase() ?? "all";
+  const normalizedProviderKey = orderFilters?.providerKey?.trim().toLowerCase() ?? "all";
+
+  return orderRows
+    .map((row) => ({
+      ...row,
+      userEmail: userMap.get(row.userId)?.email ?? "",
+      userDisplayName: userMap.get(row.userId)?.displayName ?? "",
+      providerKey: providerLinkMap.get(row.id)?.providerKey ?? null,
+      providerOrderId: providerLinkMap.get(row.id)?.providerOrderId ?? null,
+      providerStatus: providerLinkMap.get(row.id)?.latestStatus ?? null
+    }))
+    .filter((row) => {
+      if (normalizedStatus !== "all" && row.status.toLowerCase() !== normalizedStatus) {
+        return false;
+      }
+
+      if (normalizedPaymentMethod !== "all" && row.paymentMethod.toLowerCase() !== normalizedPaymentMethod) {
+        return false;
+      }
+
+      if (normalizedProviderKey !== "all" && (row.providerKey ?? "").toLowerCase() !== normalizedProviderKey) {
+        return false;
+      }
+
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      const haystacks = [
+        row.id,
+        row.userEmail,
+        row.userDisplayName,
+        row.notes ?? "",
+        row.providerOrderId ?? "",
+        row.providerStatus ?? ""
+      ];
+
+      return haystacks.some((value) => value.toLowerCase().includes(normalizedQuery));
+    });
 }
 
-export async function getAdminAuditLogs(entityType?: string, entityId?: string) {
-  const filters = [];
-  if (entityType?.trim()) {
-    filters.push(eq(auditLogs.entityType, entityType.trim()));
+export async function getAdminAuditLogs(auditFilters?: {
+  entityType?: string;
+  entityId?: string;
+  action?: string;
+  query?: string;
+}) {
+  const whereFilters = [];
+  if (auditFilters?.entityType?.trim()) {
+    whereFilters.push(eq(auditLogs.entityType, auditFilters.entityType.trim()));
   }
-  if (entityId?.trim()) {
-    filters.push(eq(auditLogs.entityId, entityId.trim()));
+  if (auditFilters?.entityId?.trim()) {
+    whereFilters.push(eq(auditLogs.entityId, auditFilters.entityId.trim()));
+  }
+  if (auditFilters?.action?.trim()) {
+    whereFilters.push(eq(auditLogs.action, auditFilters.action.trim()));
   }
 
-  return db
+  const rows = await db
     .select()
     .from(auditLogs)
-    .where(filters.length > 0 ? and(...filters) : undefined)
+    .where(whereFilters.length > 0 ? and(...whereFilters) : undefined)
     .orderBy(desc(auditLogs.createdAt));
+
+  const normalizedQuery = auditFilters?.query?.trim().toLowerCase() ?? "";
+  if (!normalizedQuery) {
+    return rows;
+  }
+
+  return rows.filter((row) => {
+    const haystacks = [row.entityType, row.entityId, row.action, row.detail, row.actorUserId ?? ""];
+    return haystacks.some((value) => value.toLowerCase().includes(normalizedQuery));
+  });
 }
 
 export async function updateAdminOrderStatus(
