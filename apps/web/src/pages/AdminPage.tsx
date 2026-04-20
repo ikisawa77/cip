@@ -221,6 +221,23 @@ const providerConfigExamples: Record<string, { title: string; description: strin
         channel: "cip-store"
       }
     }
+  },
+  "24payseller": {
+    title: "ตัวอย่าง config สำหรับ 24Payseller bridge",
+    description: "เหมาะกับสินค้าแบบ ID/PASS order โดยระบบจะส่ง formInput ไปให้ provider และรอ callback กลับมาปิดงานหรือส่ง account payload",
+    value: {
+      mode: "webhook",
+      endpoint: "https://provider.example.com/api/orders",
+      method: "POST",
+      apiKey: "replace-me",
+      authHeaderName: "Authorization",
+      authScheme: "Bearer",
+      callbackSecret: "24payseller-dev-secret",
+      staticPayload: {
+        productGroup: "id-pass",
+        source: "cip-store"
+      }
+    }
   }
 };
 

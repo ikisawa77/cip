@@ -49,6 +49,7 @@ import { sendOtpEmail } from "./lib/mailer";
 import { verifyWebhookSignature } from "./lib/security";
 import { minutesFromNow, now } from "./lib/time";
 import { isProviderKey } from "./providers/registry";
+import { map24PaysellerStatus } from "./providers/pays24seller";
 import { mapWepayStatus } from "./providers/wepay";
 import {
   cleanupExpiredOtps,
@@ -1031,6 +1032,57 @@ app.post("/api/webhooks/24payseller", async (req, res) => {
   }
 
   res.json({ ok: await settlePaymentByReference(referenceCode, "24payseller", req.body) });
+});
+
+app.post("/api/webhooks/24payseller/order-update", async (req, res) => {
+  const pays24Seller = await getProviderConfigSnapshot("24payseller");
+  const configuredSecret =
+    typeof pays24Seller.config.callbackSecret === "string" && pays24Seller.config.callbackSecret.trim()
+      ? pays24Seller.config.callbackSecret.trim()
+      : null;
+  const suppliedSecret = String(req.header("x-provider-secret") ?? req.body.callbackSecret ?? "");
+
+  if (configuredSecret && suppliedSecret !== configuredSecret) {
+    res.status(403).json({ message: "invalid callback secret" });
+    return;
+  }
+
+  const rawStatus = String(req.body.status ?? "").trim();
+  if (!rawStatus) {
+    res.status(400).json({ message: "missing status" });
+    return;
+  }
+
+  const status = map24PaysellerStatus(rawStatus);
+  const deliveryPayloadCandidate =
+    typeof req.body.deliveryPayload === "string"
+      ? req.body.deliveryPayload
+      : req.body.credentials ?? req.body.credential ?? req.body.account ?? null;
+  const deliveryPayload =
+    typeof deliveryPayloadCandidate === "string"
+      ? deliveryPayloadCandidate
+      : deliveryPayloadCandidate && typeof deliveryPayloadCandidate === "object"
+        ? JSON.stringify(deliveryPayloadCandidate, null, 2)
+        : null;
+
+  const result = await applyProviderOrderUpdate({
+    providerKey: "24payseller",
+    orderId: typeof req.body.orderId === "string" ? req.body.orderId : null,
+    providerOrderId:
+      typeof req.body.providerOrderId === "string"
+        ? req.body.providerOrderId
+        : typeof req.body.refId === "string"
+          ? req.body.refId
+          : typeof req.body.referenceId === "string"
+            ? req.body.referenceId
+            : null,
+    status,
+    note: typeof req.body.note === "string" ? req.body.note : `24Payseller callback status=${rawStatus}`,
+    payload: { ...req.body, normalizedStatus: status },
+    deliveryPayload
+  });
+
+  res.status(result.ok ? 200 : 404).json(result);
 });
 
 app.post("/api/internal/cron/process-jobs", async (req, res) => {
