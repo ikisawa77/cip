@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Boxes, Filter, Search, Tags } from "lucide-react";
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiFetch } from "../lib/api";
+import { prefetchRouteForPath, scheduleRouteChunkPrefetch } from "../lib/route-prefetch";
 
 type CatalogCategory = {
   id: string;
@@ -50,6 +51,10 @@ export function CategoryPage() {
       const haystack = `${product.name} ${product.description} ${product.type}`.toLowerCase();
       return haystack.includes(deferredSearch);
     }) ?? [];
+
+  useEffect(() => {
+    scheduleRouteChunkPrefetch(["product-page", "topup-page"]);
+  }, []);
 
   if (catalogQuery.isLoading) {
     return <div className="panel rounded-[2rem] p-6">กำลังโหลดหมวดหมู่...</div>;
@@ -97,7 +102,12 @@ export function CategoryPage() {
               <Link className="secondary-button rounded-full px-5 py-3 text-sm font-medium" to="/">
                 <ArrowLeft size={16} /> กลับทุกหมวด
               </Link>
-              <Link className="primary-button rounded-full px-5 py-3 text-sm font-medium" to="/topup">
+              <Link
+                className="primary-button rounded-full px-5 py-3 text-sm font-medium"
+                onFocus={() => prefetchRouteForPath("/topup")}
+                onMouseEnter={() => prefetchRouteForPath("/topup")}
+                to="/topup"
+              >
                 เติมเงินก่อนซื้อ
               </Link>
             </div>
@@ -158,7 +168,12 @@ export function CategoryPage() {
                   <div className="text-2xl font-semibold text-slate-950">{formatMoney(product.priceCents)}</div>
                   {product.compareAtCents ? <div className="text-sm text-slate-400 line-through">{formatMoney(product.compareAtCents)}</div> : null}
                 </div>
-                <Link className="primary-button inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm" to={`/product/${product.slug}`}>
+                <Link
+                  className="primary-button inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm"
+                  onFocus={() => prefetchRouteForPath(`/product/${product.slug}`)}
+                  onMouseEnter={() => prefetchRouteForPath(`/product/${product.slug}`)}
+                  to={`/product/${product.slug}`}
+                >
                   ดูรายละเอียด <ArrowRight size={16} />
                 </Link>
               </div>

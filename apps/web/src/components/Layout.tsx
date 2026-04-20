@@ -18,6 +18,7 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { useAuth } from "../auth";
 import { apiFetch } from "../lib/api";
+import { prefetchRouteForPath, preloadRouteChunk } from "../lib/route-prefetch";
 
 type HeaderItem = {
   to: string;
@@ -64,27 +65,49 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const showFooter = !location.pathname.startsWith("/admin");
   const footerContentQuery = useQuery({
     queryKey: ["content", "footer"],
-    queryFn: () => apiFetch<FooterContent>("/api/content/footer")
+    queryFn: () => apiFetch<FooterContent>("/api/content/footer"),
+    enabled: showFooter
   });
   const footerContent = footerContentQuery.data ?? footerContentDefaults;
 
   useEffect(() => {
-    const handleScroll = () => {
-      const scrollTop = window.scrollY;
-      const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
-      const progress = scrollHeight > 0 ? Math.min(scrollTop / scrollHeight, 1) : 0;
+    let rafId = 0;
 
-      setShowBackToTop(scrollTop > 280);
-      setScrollProgress(progress);
+    const handleScroll = () => {
+      if (rafId) {
+        return;
+      }
+
+      rafId = window.requestAnimationFrame(() => {
+        const scrollTop = window.scrollY;
+        const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+        const progress = scrollHeight > 0 ? Math.min(scrollTop / scrollHeight, 1) : 0;
+
+        setShowBackToTop((current) => (current !== (scrollTop > 280) ? scrollTop > 280 : current));
+        setScrollProgress((current) => (Math.abs(current - progress) > 0.01 ? progress : current));
+        rafId = 0;
+      });
     };
 
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
       window.removeEventListener("scroll", handleScroll);
     };
   }, []);
+
+  const handleNavigationIntent = (path: string, isAnchor = false) => {
+    if (isAnchor) {
+      void preloadRouteChunk("category-page");
+      return;
+    }
+
+    prefetchRouteForPath(path);
+  };
 
   const progressPercent = Math.round(scrollProgress * 100);
   const progressOffset = 75.4 - 75.4 * scrollProgress;
@@ -125,7 +148,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
               if (item.isAnchor) {
                 return (
-                  <a className="nav-pill nav-pill--menu rounded-full px-4 py-2.5 text-sm" href={item.to} key={item.to}>
+                  <a
+                    className="nav-pill nav-pill--menu rounded-full px-4 py-2.5 text-sm"
+                    href={item.to}
+                    key={item.to}
+                    onFocus={() => handleNavigationIntent(item.to, true)}
+                    onMouseEnter={() => handleNavigationIntent(item.to, true)}
+                  >
                     <Icon className="nav-pill__icon" size={15} />
                     {item.label}
                   </a>
@@ -133,7 +162,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
               }
 
               return (
-                <NavLink className="nav-pill nav-pill--menu rounded-full px-4 py-2.5 text-sm" key={item.to} to={item.to}>
+                <NavLink
+                  className="nav-pill nav-pill--menu rounded-full px-4 py-2.5 text-sm"
+                  key={item.to}
+                  onFocus={() => handleNavigationIntent(item.to)}
+                  onMouseEnter={() => handleNavigationIntent(item.to)}
+                  to={item.to}
+                >
                   <Icon className="nav-pill__icon" size={15} />
                   {item.label}
                 </NavLink>
@@ -153,7 +188,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </button>
             </>
           ) : (
-            <button className="primary-button rounded-full px-4 py-2 text-sm font-medium" onClick={() => openAuth("login")}>
+            <button
+              className="primary-button rounded-full px-4 py-2 text-sm font-medium"
+              onClick={() => openAuth("login")}
+              onFocus={() => void preloadRouteChunk("auth-dialog")}
+              onMouseEnter={() => void preloadRouteChunk("auth-dialog")}
+            >
               Login / Register
             </button>
           )}

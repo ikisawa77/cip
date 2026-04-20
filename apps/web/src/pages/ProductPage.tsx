@@ -2,11 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PaymentIntentPresentation } from "@cip/shared";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, ArrowLeft, Coins, Copy, LockKeyhole, QrCode, ShoppingBag, Tags, WalletCards } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { useAuth } from "../auth";
 import { apiFetch } from "../lib/api";
+import { prefetchRouteForPath, scheduleRouteChunkPrefetch } from "../lib/route-prefetch";
 
 type ProductDetail = {
   id: string;
@@ -120,6 +121,10 @@ export function ProductPage() {
   const currentCategory = catalogQuery.data?.find((category) => category.products.some((item) => item.slug === product.slug)) ?? null;
   const promptpayIntent = paymentIntentQuery.data?.provider === "promptpay_qr" ? paymentIntentQuery.data : null;
 
+  useEffect(() => {
+    scheduleRouteChunkPrefetch(["topup-page", "category-page", "auth-dialog"]);
+  }, []);
+
   const openConfirmDialog = (paymentMethod: "wallet" | "promptpay_qr") => {
     if (!user) {
       openAuth("login", `/product/${slug}`);
@@ -140,7 +145,12 @@ export function ProductPage() {
         {currentCategory ? (
           <>
             <span>/</span>
-            <Link className="hover:text-slate-950" to={`/category/${currentCategory.slug}`}>
+            <Link
+              className="hover:text-slate-950"
+              onFocus={() => prefetchRouteForPath(`/category/${currentCategory.slug}`)}
+              onMouseEnter={() => prefetchRouteForPath(`/category/${currentCategory.slug}`)}
+              to={`/category/${currentCategory.slug}`}
+            >
               {currentCategory.name}
             </Link>
           </>
@@ -165,7 +175,12 @@ export function ProductPage() {
               </div>
               <h1 className="mt-2 text-3xl font-semibold text-slate-950">{product.name}</h1>
               {currentCategory ? (
-                <Link className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]" to={`/category/${currentCategory.slug}`}>
+                <Link
+                  className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]"
+                  onFocus={() => prefetchRouteForPath(`/category/${currentCategory.slug}`)}
+                  onMouseEnter={() => prefetchRouteForPath(`/category/${currentCategory.slug}`)}
+                  to={`/category/${currentCategory.slug}`}
+                >
                   <Tags size={15} />
                   หมวด: {currentCategory.name}
                 </Link>
@@ -194,6 +209,8 @@ export function ProductPage() {
           <div className="mt-6 grid gap-3 md:grid-cols-2">
             <button
               className="primary-button inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-medium"
+              onFocus={() => prefetchRouteForPath("/account")}
+              onMouseEnter={() => prefetchRouteForPath("/account")}
               onClick={() => {
                 openConfirmDialog("wallet");
               }}
@@ -203,6 +220,8 @@ export function ProductPage() {
             </button>
             <button
               className="secondary-button inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-medium"
+              onFocus={() => prefetchRouteForPath("/topup")}
+              onMouseEnter={() => prefetchRouteForPath("/topup")}
               onClick={() => {
                 openConfirmDialog("promptpay_qr");
               }}

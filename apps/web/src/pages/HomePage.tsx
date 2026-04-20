@@ -14,10 +14,11 @@ import {
   TimerReset,
   Wallet
 } from "lucide-react";
-import { startTransition, useDeferredValue, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { apiFetch } from "../lib/api";
+import { prefetchRouteForPath, scheduleRouteChunkPrefetch } from "../lib/route-prefetch";
 
 type CatalogCategory = {
   id: string;
@@ -93,6 +94,10 @@ export function HomePage() {
   const featuredProducts = visibleCategories.flatMap((category) => category.products).slice(0, 3);
   const totalVisibleProducts = visibleCategories.reduce((sum, category) => sum + category.products.length, 0);
 
+  useEffect(() => {
+    scheduleRouteChunkPrefetch(["category-page", "product-page", "topup-page", "auth-dialog"]);
+  }, []);
+
   return (
     <div className="space-y-8 pb-8">
       <section className="hero-grid panel overflow-hidden rounded-[2.75rem] px-6 py-8 md:px-10 md:py-12">
@@ -119,7 +124,12 @@ export function HomePage() {
               <a className="primary-button rounded-full px-5 py-3 text-sm font-medium" href="#store-categories">
                 {content.primaryCtaLabel}
               </a>
-              <Link className="secondary-button rounded-full px-5 py-3 text-sm font-medium" to="/topup">
+              <Link
+                className="secondary-button rounded-full px-5 py-3 text-sm font-medium"
+                onFocus={() => prefetchRouteForPath("/topup")}
+                onMouseEnter={() => prefetchRouteForPath("/topup")}
+                to="/topup"
+              >
                 {content.secondaryCtaLabel}
               </Link>
             </motion.div>
@@ -154,7 +164,13 @@ export function HomePage() {
               <div className="mt-5 grid gap-3">
                 {featuredProducts.length > 0 ? (
                   featuredProducts.map((product) => (
-                    <Link className="panel card-hover flex items-center justify-between rounded-[1.4rem] px-4 py-4" key={product.id} to={`/product/${product.slug}`}>
+                    <Link
+                      className="panel card-hover flex items-center justify-between rounded-[1.4rem] px-4 py-4"
+                      key={product.id}
+                      onFocus={() => prefetchRouteForPath(`/product/${product.slug}`)}
+                      onMouseEnter={() => prefetchRouteForPath(`/product/${product.slug}`)}
+                      to={`/product/${product.slug}`}
+                    >
                       <div>
                         <div className="text-sm muted-text">{product.type}</div>
                         <div className="mt-1 text-base font-medium text-slate-900">{product.name}</div>
@@ -233,6 +249,8 @@ export function HomePage() {
             <button
               className={`rounded-full px-4 py-2 text-sm transition ${selectedCategorySlug === category.slug ? "bg-[var(--text)] text-white" : "secondary-button"}`}
               key={category.id}
+              onFocus={() => prefetchRouteForPath(`/category/${category.slug}`)}
+              onMouseEnter={() => prefetchRouteForPath(`/category/${category.slug}`)}
               onClick={() =>
                 startTransition(() => {
                   setSearchParams((current) => {
@@ -278,10 +296,20 @@ export function HomePage() {
                   {category.products.length} รายการที่แสดง
                 </div>
                 <div className="mt-5 flex flex-wrap gap-4">
-                  <Link className="inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]" to={`/category/${category.slug}`}>
+                  <Link
+                    className="inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]"
+                    onFocus={() => prefetchRouteForPath(`/category/${category.slug}`)}
+                    onMouseEnter={() => prefetchRouteForPath(`/category/${category.slug}`)}
+                    to={`/category/${category.slug}`}
+                  >
                     {content.categoryBrowseLabel} <ArrowRight size={16} />
                   </Link>
-                  <Link className="inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]" to="/topup">
+                  <Link
+                    className="inline-flex items-center gap-2 text-sm font-medium text-[var(--brand)]"
+                    onFocus={() => prefetchRouteForPath("/topup")}
+                    onMouseEnter={() => prefetchRouteForPath("/topup")}
+                    to="/topup"
+                  >
                     {content.categoryTopupLabel} <ArrowRight size={16} />
                   </Link>
                 </div>
@@ -326,7 +354,12 @@ export function HomePage() {
                               <div className="text-sm text-slate-400 line-through">{formatMoney(product.compareAtCents)}</div>
                             ) : null}
                           </div>
-                          <Link className="primary-button inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm" to={`/product/${product.slug}`}>
+                          <Link
+                            className="primary-button inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm"
+                            onFocus={() => prefetchRouteForPath(`/product/${product.slug}`)}
+                            onMouseEnter={() => prefetchRouteForPath(`/product/${product.slug}`)}
+                            to={`/product/${product.slug}`}
+                          >
                             ดูรายละเอียด <ArrowRight size={16} />
                           </Link>
                         </div>
