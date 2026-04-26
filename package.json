@@ -16,6 +16,7 @@
     "dev": "pnpm --parallel --filter @cip/api --filter @cip/web run dev",
     "dev:web": "pnpm --filter @cip/web dev",
     "dev:api": "pnpm --filter @cip/api dev",
+    "serve:web:local": "node ./scripts/serve-web-local.mjs",
     "kbiz:scheduler": "pnpm --filter @cip/api schedule:kbiz",
     "build": "pnpm -r build",
     "check": "pnpm -r check",

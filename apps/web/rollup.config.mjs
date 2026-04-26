@@ -60,10 +60,19 @@ function emitIndexHtml() {
 
 export default {
   input: path.resolve(rootDir, "src/main.tsx"),
+  onwarn(warning, warn) {
+    if (warning.code === "MODULE_LEVEL_DIRECTIVE") {
+      return;
+    }
+
+    warn(warning);
+  },
   output: {
     dir: outputDir,
     format: "esm",
     sourcemap: false,
+    banner:
+      'const process = globalThis.process && globalThis.process.env ? globalThis.process : { env: { NODE_ENV: "production" } };',
     entryFileNames: "assets/[name]-[hash].js",
     chunkFileNames: "assets/[name]-[hash].js",
     assetFileNames: "assets/[name]-[hash][extname]"
@@ -76,7 +85,9 @@ export default {
     replace({
       preventAssignment: true,
       values: {
-        "import.meta.env.VITE_API_BASE": JSON.stringify(process.env.VITE_API_BASE ?? "")
+        "import.meta.env.VITE_API_BASE": JSON.stringify(process.env.VITE_API_BASE ?? ""),
+        "process.env.NODE_ENV": JSON.stringify("production"),
+        "process.env?.NODE_ENV": JSON.stringify("production")
       }
     }),
     nodeResolve({

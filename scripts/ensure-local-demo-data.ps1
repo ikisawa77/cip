@@ -6,6 +6,17 @@ Push-Location $root
 try {
   Write-Host "Checking local demo data..."
 
+  $pnpmCommand = Get-Command pnpm -ErrorAction SilentlyContinue
+  if (-not $pnpmCommand -and (Test-Path "C:\Program Files\Volta\pnpm.cmd")) {
+    $pnpmCommand = Get-Item "C:\Program Files\Volta\pnpm.cmd"
+  }
+
+  if (-not $pnpmCommand) {
+    throw "pnpm was not found. Run first-time-setup.bat first."
+  }
+
+  $pnpmPath = if ($pnpmCommand.Source) { $pnpmCommand.Source } else { $pnpmCommand.FullName }
+
   $probeScript = @'
 import fs from "node:fs";
 import path from "node:path";
@@ -56,7 +67,7 @@ console.log(JSON.stringify(counts));
 await connection.end();
 '@
 
-  $probeOutput = $probeScript | corepack pnpm --filter @cip/api exec node --input-type=module -
+  $probeOutput = $probeScript | & $pnpmPath --filter @cip/api exec node --input-type=module -
   if ($LASTEXITCODE -ne 0) {
     throw "Failed to inspect local demo data state."
   }
@@ -66,7 +77,7 @@ await connection.end();
 
   if ($missingDemoData) {
     Write-Host "Local database is missing demo data. Running seed..."
-    corepack pnpm db:seed
+    & $pnpmPath db:seed
     if ($LASTEXITCODE -ne 0) {
       throw "db:seed failed"
     }

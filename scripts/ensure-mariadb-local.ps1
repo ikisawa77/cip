@@ -35,6 +35,8 @@ function Get-EnvMap {
 
 function Get-MariaDbRoot {
   $candidateRoots = @(
+    "C:\xampp\mysql",
+    "C:\AppServ\MySQL",
     "C:\Program Files\MariaDB 12.2",
     "C:\Program Files\MariaDB 11.8",
     "C:\Program Files\MariaDB 11.7",
@@ -50,7 +52,7 @@ function Get-MariaDbRoot {
   )
 
   foreach ($candidate in $candidateRoots) {
-    if (Test-Path (Join-Path $candidate "bin\mariadbd.exe")) {
+    if ((Test-Path (Join-Path $candidate "bin\mariadbd.exe")) -or (Test-Path (Join-Path $candidate "bin\mysqld.exe"))) {
       return $candidate
     }
   }
@@ -59,11 +61,11 @@ function Get-MariaDbRoot {
     Sort-Object Name -Descending |
     Select-Object -First 1
 
-  if ($discovered -and (Test-Path (Join-Path $discovered.FullName "bin\mariadbd.exe"))) {
+  if ($discovered -and ((Test-Path (Join-Path $discovered.FullName "bin\mariadbd.exe")) -or (Test-Path (Join-Path $discovered.FullName "bin\mysqld.exe")))) {
     return $discovered.FullName
   }
 
-  throw "MariaDB Server not found in C:\Program Files. Install it first."
+  throw "MariaDB/MySQL Server not found. Install MariaDB or XAMPP first."
 }
 
 function Wait-ForPort {
@@ -107,8 +109,14 @@ $dbName = Get-OrDefault -Map $envMap -Key "DB_NAME" -DefaultValue "cip_local"
 
 $mariaDbRoot = Get-MariaDbRoot
 $mariaDbExe = Join-Path $mariaDbRoot "bin\mariadbd.exe"
+if (-not (Test-Path $mariaDbExe)) {
+  $mariaDbExe = Join-Path $mariaDbRoot "bin\mysqld.exe"
+}
 $mysqlExe = Join-Path $mariaDbRoot "bin\mysql.exe"
 $defaultsFile = Join-Path $mariaDbRoot "data\my.ini"
+if (-not (Test-Path $defaultsFile)) {
+  $defaultsFile = Join-Path $mariaDbRoot "bin\my.ini"
+}
 $stdoutLog = Join-Path $root "mariadb-local.out.log"
 $stderrLog = Join-Path $root "mariadb-local.err.log"
 
@@ -137,7 +145,8 @@ if (-not [string]::IsNullOrWhiteSpace($dbPassword)) {
   $mysqlArgs += "-p$dbPassword"
 }
 $mysqlArgs += "-e"
-$mysqlArgs += "CREATE DATABASE IF NOT EXISTS $dbName CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+$safeDbName = $dbName.Replace("``", "````")
+$mysqlArgs += "CREATE DATABASE IF NOT EXISTS ``$safeDbName`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 & $mysqlExe @mysqlArgs
 if ($LASTEXITCODE -ne 0) {

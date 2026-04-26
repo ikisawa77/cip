@@ -3,6 +3,7 @@ node_modules
 dist
 coverage
 test-results
+logs/
 .local-tools
 package-lock.json
 .env
@@ -11,6 +12,7 @@ package-lock.json
 apps/api/public
 apps/api/.tmp
 *.log
+*.err
 tmp-*.err
 npm-debug.log*
 Thumbs.db

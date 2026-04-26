@@ -39,8 +39,17 @@ exit /b 1
 
 :pnpm_found
 
+echo Building CIP Web for stable local start...
+call "%PNPM_CMD%" --filter @cip/web build
+if errorlevel 1 (
+  echo.
+  echo Web build failed.
+  pause
+  exit /b 1
+)
+
 echo Starting CIP Web on http://localhost:5173
-call "%PNPM_CMD%" dev:web -- --host 127.0.0.1
+call "%PNPM_CMD%" serve:web:local
 
 if errorlevel 1 (
   echo.

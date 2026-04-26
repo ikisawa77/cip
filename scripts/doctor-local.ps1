@@ -46,6 +46,59 @@ function Get-VersionOrNull([string]$raw) {
   }
 }
 
+function Invoke-VersionCommand([string]$CommandPath, [string[]]$Arguments) {
+  if ([string]::IsNullOrWhiteSpace($CommandPath)) {
+    return ""
+  }
+
+  try {
+    $output = & $CommandPath @Arguments 2>$null
+    if ($LASTEXITCODE -ne 0 -or $null -eq $output) {
+      return ""
+    }
+
+    return ($output | Select-Object -First 1).ToString().Trim()
+  } catch {
+    return ""
+  }
+}
+
+function Get-NodeVersionRaw {
+  $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+  if ($nodeCommand) {
+    $version = Invoke-VersionCommand $nodeCommand.Source @("-v")
+    if ($version) {
+      return $version
+    }
+  }
+
+  $voltaCommand = Get-Command volta -ErrorAction SilentlyContinue
+  if ($voltaCommand) {
+    $version = Invoke-VersionCommand $voltaCommand.Source @("run", "node", "-v")
+    if ($version) {
+      return $version
+    }
+
+    $nodePath = Invoke-VersionCommand $voltaCommand.Source @("which", "node")
+    if ($nodePath -and (Test-Path $nodePath)) {
+      $version = Invoke-VersionCommand $nodePath @("-v")
+      if ($version) {
+        return $version
+      }
+    }
+  }
+
+  $voltaNodeImage = Join-Path $env:LOCALAPPDATA "Volta\tools\image\node\$expectedNode\node.exe"
+  if (Test-Path $voltaNodeImage) {
+    $version = Invoke-VersionCommand $voltaNodeImage @("-v")
+    if ($version) {
+      return $version
+    }
+  }
+
+  return ""
+}
+
 Set-Location $repoRoot
 
 Write-Host ""
@@ -55,11 +108,11 @@ Write-Host ""
 
 $packageJson = Get-Content (Join-Path $repoRoot "package.json") | ConvertFrom-Json
 
-$nodeCommand = Get-Command node -ErrorAction SilentlyContinue
-if (-not $nodeCommand) {
+$nodeRawVersion = Get-NodeVersionRaw
+if (-not $nodeRawVersion) {
   Add-Error "node was not found in PATH"
 } else {
-  $nodeVersion = Get-VersionOrNull (& $nodeCommand.Source -v)
+  $nodeVersion = Get-VersionOrNull $nodeRawVersion
   if (-not $nodeVersion) {
     Add-Error "could not read Node.js version"
   } elseif ($nodeVersion.Major -ne $expectedNode.Major) {

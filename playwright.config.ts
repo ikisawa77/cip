@@ -19,7 +19,7 @@ export default defineConfig({
       timeout: 120_000
     },
     {
-      command: "pnpm dev:web -- --host 127.0.0.1",
+      command: "pnpm --filter @cip/web build && pnpm serve:web:local",
       url: "http://127.0.0.1:5173",
       reuseExistingServer: true,
       timeout: 120_000

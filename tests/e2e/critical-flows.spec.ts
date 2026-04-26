@@ -10,6 +10,27 @@ test("public UI loads in a real browser", async ({ page }) => {
   await expect(page.locator("body")).toContainText("CIP");
 });
 
+test("account password form shows friendly validation", async ({ page }) => {
+  const login = await page.context().request.post(`${apiBaseUrl}/api/auth/login`, {
+    data: {
+      email: adminEmail,
+      password: adminPassword
+    }
+  });
+  expect(login.ok()).toBeTruthy();
+
+  await page.goto("/account", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: /บัญชีและความปลอดภัย/ })).toBeVisible();
+
+  await page.getByPlaceholder(/รหัสผ่านปัจจุบัน/).fill(adminPassword);
+  await page.getByPlaceholder(/รหัสผ่านใหม่/).fill("short");
+  await page.getByRole("button", { name: /เปลี่ยนรหัสผ่าน/ }).click();
+
+  await expect(page.locator("body")).toContainText("รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร");
+  await expect(page.locator("body")).not.toContainText("too_small");
+  await expect(page.locator("body")).not.toContainText("String must contain");
+});
+
 test("login, topup, order, provider callback, refund", async () => {
   const api = await request.newContext({ baseURL: apiBaseUrl });
 

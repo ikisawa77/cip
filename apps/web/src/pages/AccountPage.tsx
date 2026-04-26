@@ -229,19 +229,34 @@ export function AccountPage() {
 
           <form
             className="mt-6 grid gap-3 md:grid-cols-3"
+            noValidate
             onSubmit={(event) => {
               event.preventDefault();
               const formData = new FormData(event.currentTarget);
+              const currentPassword = String(formData.get("currentPassword") ?? "");
+              const newPassword = String(formData.get("newPassword") ?? "");
+
               setSecurityMessage(null);
+
+              if (currentPassword.length < 8) {
+                setSecurityMessage("รหัสผ่านปัจจุบันต้องมีอย่างน้อย 8 ตัวอักษร");
+                return;
+              }
+
+              if (newPassword.length < 8) {
+                setSecurityMessage("รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร");
+                return;
+              }
+
               void changePasswordMutation.mutate({
-                currentPassword: String(formData.get("currentPassword") ?? ""),
-                newPassword: String(formData.get("newPassword") ?? "")
+                currentPassword,
+                newPassword
               });
               event.currentTarget.reset();
             }}
           >
-            <input className="input-field" name="currentPassword" placeholder="รหัสผ่านปัจจุบัน" required type="password" />
-            <input className="input-field" name="newPassword" placeholder="รหัสผ่านใหม่" required type="password" />
+            <input className="input-field" minLength={8} name="currentPassword" placeholder="รหัสผ่านปัจจุบัน" required type="password" />
+            <input className="input-field" minLength={8} name="newPassword" placeholder="รหัสผ่านใหม่ อย่างน้อย 8 ตัวอักษร" required type="password" />
             <button className="primary-button rounded-full px-4 py-3 text-sm" type="submit">
               เปลี่ยนรหัสผ่าน
             </button>
