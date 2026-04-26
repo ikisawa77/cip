@@ -2,15 +2,28 @@
 setlocal
 
 cd /d "%~dp0"
+set "VOLTA_BIN=C:\Program Files\Volta"
 set "PNPM_CMD="
 
 echo CIP first-time local setup
 echo.
 
 echo [0/6] Running local doctor...
+if not exist "%VOLTA_BIN%\node.exe" goto doctor_without_volta
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:Path='%VOLTA_BIN%;'+$env:Path; & '%~dp0scripts\doctor-local.ps1' -Mode setup"
+goto doctor_done
+
+:doctor_without_volta
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\doctor-local.ps1" -Mode setup
+
+:doctor_done
 if errorlevel 1 goto :fail
 
+if not exist "%VOLTA_BIN%\pnpm.cmd" goto find_pnpm
+set "PNPM_CMD=%VOLTA_BIN%\pnpm.cmd"
+goto :pnpm_found
+
+:find_pnpm
 for /f "delims=" %%I in ('where pnpm.cmd 2^>nul') do (
   set "PNPM_CMD=%%I"
   goto :pnpm_found

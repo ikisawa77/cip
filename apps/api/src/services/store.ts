@@ -37,7 +37,8 @@ import {
   siteContents,
   users,
   walletTransactions,
-  webhookEvents
+  webhookEvents,
+  providerSyncFiles
 } from "../db/schema";
 import { createId } from "../lib/ids";
 import { runKbizStatementImport } from "../lib/kbiz-import";
@@ -76,6 +77,73 @@ export async function getProductBySlug(slug: string) {
   return {
     ...product,
     availableStock: Number(stockRow?.available ?? 0)
+  };
+}
+
+type AdminPaginationInput = {
+  page?: number;
+  pageSize?: number;
+};
+
+export type AdminPaginatedResult<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+type KbizMonitoringSummary = {
+  latestImportAt: string | null;
+  processedFiles: number;
+  recentProcessedFiles: Array<{
+    id: string;
+    filePath: string;
+    fileSignature: string;
+    importedAt: string;
+    sourceCreatedAt: string | null;
+  }>;
+  recentEvents: Array<{
+    id: string;
+    createdAt: string;
+    processed: boolean;
+    payloadJson: string;
+  }>;
+};
+
+function clampAdminPage(input?: number) {
+  if (!Number.isFinite(input) || !input) {
+    return 1;
+  }
+
+  return Math.max(1, Math.round(input));
+}
+
+function clampAdminPageSize(input?: number, fallback = 8) {
+  if (!Number.isFinite(input) || !input) {
+    return fallback;
+  }
+
+  return Math.max(1, Math.min(100, Math.round(input)));
+}
+
+function paginateAdminItems<T>(
+  items: T[],
+  pagination?: AdminPaginationInput,
+  fallbackPageSize = 8
+): AdminPaginatedResult<T> {
+  const total = items.length;
+  const pageSize = clampAdminPageSize(pagination?.pageSize, fallbackPageSize);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(clampAdminPage(pagination?.page), totalPages);
+  const start = (page - 1) * pageSize;
+
+  return {
+    items: items.slice(start, start + pageSize),
+    total,
+    page,
+    pageSize,
+    totalPages
   };
 }
 
@@ -603,7 +671,7 @@ export async function getAdminOrders(orderFilters?: {
   status?: string;
   paymentMethod?: string;
   providerKey?: string;
-}) {
+} & AdminPaginationInput) {
   const orderRows = await db.select().from(orders).orderBy(desc(orders.createdAt));
   const userIds = Array.from(new Set(orderRows.map((row) => row.userId)));
   const userRows =
@@ -637,7 +705,7 @@ export async function getAdminOrders(orderFilters?: {
   const normalizedPaymentMethod = orderFilters?.paymentMethod?.trim().toLowerCase() ?? "all";
   const normalizedProviderKey = orderFilters?.providerKey?.trim().toLowerCase() ?? "all";
 
-  return orderRows
+  const filteredRows = orderRows
     .map((row) => ({
       ...row,
       userEmail: userMap.get(row.userId)?.email ?? "",
@@ -674,6 +742,8 @@ export async function getAdminOrders(orderFilters?: {
 
       return haystacks.some((value) => value.toLowerCase().includes(normalizedQuery));
     });
+
+  return paginateAdminItems(filteredRows, orderFilters, 8);
 }
 
 export async function getAdminAuditLogs(auditFilters?: {
@@ -681,7 +751,7 @@ export async function getAdminAuditLogs(auditFilters?: {
   entityId?: string;
   action?: string;
   query?: string;
-}) {
+} & AdminPaginationInput) {
   const whereFilters = [];
   if (auditFilters?.entityType?.trim()) {
     whereFilters.push(eq(auditLogs.entityType, auditFilters.entityType.trim()));
@@ -700,14 +770,14 @@ export async function getAdminAuditLogs(auditFilters?: {
     .orderBy(desc(auditLogs.createdAt));
 
   const normalizedQuery = auditFilters?.query?.trim().toLowerCase() ?? "";
-  if (!normalizedQuery) {
-    return rows;
-  }
+  const filteredRows = !normalizedQuery
+    ? rows
+    : rows.filter((row) => {
+        const haystacks = [row.entityType, row.entityId, row.action, row.detail, row.actorUserId ?? ""];
+        return haystacks.some((value) => value.toLowerCase().includes(normalizedQuery));
+      });
 
-  return rows.filter((row) => {
-    const haystacks = [row.entityType, row.entityId, row.action, row.detail, row.actorUserId ?? ""];
-    return haystacks.some((value) => value.toLowerCase().includes(normalizedQuery));
-  });
+  return paginateAdminItems(filteredRows, auditFilters, 8);
 }
 
 export async function updateAdminOrderStatus(
@@ -833,7 +903,11 @@ export async function getPaymentIntentPresentation(paymentIntentId: string, user
   return buildPaymentIntentPresentation(intent);
 }
 
-export async function getAdminPaymentIntents() {
+export async function getAdminPaymentIntents(paymentFilters?: {
+  query?: string;
+  provider?: string;
+  status?: string;
+} & AdminPaginationInput) {
   const intentRows = await db.select().from(paymentIntents).orderBy(desc(paymentIntents.createdAt));
 
   const userIds = Array.from(new Set(intentRows.map((row) => row.userId)));
@@ -850,7 +924,7 @@ export async function getAdminPaymentIntents() {
       : [];
   const userMap = new Map(userRows.map((row) => [row.id, row]));
 
-  return Promise.all(
+  const presentations = await Promise.all(
     intentRows.map(async (intent) => {
       const presentation = await buildPaymentIntentPresentation(intent);
       const owner = userMap.get(intent.userId);
@@ -866,6 +940,30 @@ export async function getAdminPaymentIntents() {
       };
     })
   );
+
+  const normalizedQuery = paymentFilters?.query?.trim().toLowerCase() ?? "";
+  const normalizedProvider = paymentFilters?.provider?.trim().toLowerCase() ?? "all";
+  const normalizedStatus = paymentFilters?.status?.trim().toLowerCase() ?? "all";
+
+  const filteredRows = presentations.filter((intent) => {
+    if (normalizedProvider !== "all" && intent.provider.toLowerCase() !== normalizedProvider) {
+      return false;
+    }
+
+    if (normalizedStatus !== "all" && intent.status.toLowerCase() !== normalizedStatus) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    return [intent.referenceCode, intent.userEmail, intent.userDisplayName, intent.id, intent.targetId]
+      .filter((value): value is string => Boolean(value))
+      .some((value) => value.toLowerCase().includes(normalizedQuery));
+  });
+
+  return paginateAdminItems(filteredRows, paymentFilters, 8);
 }
 
 type MatchablePromptpayTransaction = {
@@ -1399,6 +1497,183 @@ export async function syncProvider(providerKey: ProviderKey) {
     providerKey,
     ok: result?.ok ?? false,
     note: result?.note ?? "provider sync not supported"
+  };
+}
+
+export async function getAdminWebhookEvents(webhookFilters?: {
+  query?: string;
+  providerKey?: string;
+  eventType?: string;
+  processed?: string;
+} & AdminPaginationInput) {
+  const rows = await db.select().from(webhookEvents).orderBy(desc(webhookEvents.createdAt));
+  const normalizedQuery = webhookFilters?.query?.trim().toLowerCase() ?? "";
+  const normalizedProviderKey = webhookFilters?.providerKey?.trim().toLowerCase() ?? "all";
+  const normalizedEventType = webhookFilters?.eventType?.trim().toLowerCase() ?? "all";
+  const normalizedProcessed = webhookFilters?.processed?.trim().toLowerCase() ?? "all";
+
+  const filteredRows = rows.filter((row) => {
+    if (normalizedProviderKey !== "all" && row.providerKey.toLowerCase() !== normalizedProviderKey) {
+      return false;
+    }
+
+    if (normalizedEventType !== "all" && row.eventType.toLowerCase() !== normalizedEventType) {
+      return false;
+    }
+
+    if (normalizedProcessed !== "all") {
+      const expectedProcessed = normalizedProcessed === "processed";
+      if (row.processed !== expectedProcessed) {
+        return false;
+      }
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    return [row.id, row.providerKey, row.eventType, row.payloadJson].some((value) =>
+      value.toLowerCase().includes(normalizedQuery)
+    );
+  });
+
+  return paginateAdminItems(filteredRows, webhookFilters, 8);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export async function replayWebhookEventByAdmin(webhookEventId: string, actorUserId?: string) {
+  const [event] = await db.select().from(webhookEvents).where(eq(webhookEvents.id, webhookEventId)).limit(1);
+  if (!event) {
+    throw new Error("ไม่พบ webhook event");
+  }
+
+  let parsedPayload: unknown = null;
+  try {
+    parsedPayload = JSON.parse(event.payloadJson) as unknown;
+  } catch {
+    parsedPayload = event.payloadJson;
+  }
+
+  if (event.eventType === "provider.order_update" && isRecord(parsedPayload)) {
+    const status = String(parsedPayload.status ?? "");
+    if (!["processing", "fulfilled", "failed", "manual_review"].includes(status)) {
+      throw new Error("provider.order_update ไม่มี status ที่ replay ได้");
+    }
+
+    const result = await applyProviderOrderUpdate({
+      providerKey: event.providerKey as ProviderKey,
+      orderId: typeof parsedPayload.orderId === "string" ? parsedPayload.orderId : null,
+      providerOrderId: typeof parsedPayload.providerOrderId === "string" ? parsedPayload.providerOrderId : null,
+      status: status as "processing" | "fulfilled" | "failed" | "manual_review",
+      note:
+        typeof parsedPayload.note === "string"
+          ? `${parsedPayload.note} | replayed by admin`
+          : `replayed provider callback from admin (${event.providerKey})`,
+      payload: isRecord(parsedPayload.payload) ? parsedPayload.payload : parsedPayload,
+      deliveryPayload: typeof parsedPayload.deliveryPayload === "string" ? parsedPayload.deliveryPayload : null
+    });
+
+    await logAudit("webhook_event", event.id, "replay", `${event.providerKey}:${event.eventType}`, actorUserId);
+    return {
+      ok: result.ok,
+      message: result.ok ? "replayed provider order update" : result.message
+    };
+  }
+
+  if (event.eventType === "payment.completed" && isRecord(parsedPayload)) {
+    const referenceCode =
+      typeof parsedPayload.referenceCode === "string"
+        ? parsedPayload.referenceCode
+        : typeof parsedPayload.reference === "string"
+          ? parsedPayload.reference
+          : null;
+    if (!referenceCode) {
+      throw new Error("payment.completed ไม่มี referenceCode สำหรับ replay");
+    }
+
+    const settleResult =
+      typeof parsedPayload.amountCents === "number" && Number.isFinite(parsedPayload.amountCents)
+        ? await settlePaymentByReferenceWithAmount(
+            referenceCode,
+            event.providerKey,
+            Math.round(parsedPayload.amountCents),
+            { ...parsedPayload, replayedByAdmin: true }
+          )
+        : {
+            ok: await settlePaymentByReference(referenceCode, event.providerKey, {
+              ...parsedPayload,
+              replayedByAdmin: true
+            }),
+            message: "settled"
+          };
+
+    await logAudit("webhook_event", event.id, "replay", `${event.providerKey}:${event.eventType}`, actorUserId);
+    return {
+      ok: settleResult.ok,
+      message: settleResult.message
+    };
+  }
+
+  if (event.providerKey === "kbiz_import" && event.eventType === "statement.file.processed") {
+    const result = await runKbizStatementImport(matchPromptpayTransactions);
+    await logAudit("webhook_event", event.id, "replay", `${event.providerKey}:${event.eventType}`, actorUserId);
+    return {
+      ok: result.ok,
+      message: `${result.note} | imported=${result.imported} matched=${result.matched} unmatched=${result.unmatched}`
+    };
+  }
+
+  throw new Error(`ยังไม่รองรับ replay สำหรับ ${event.providerKey}:${event.eventType}`);
+}
+
+export async function getKbizMonitoringSummary(): Promise<KbizMonitoringSummary> {
+  const [countRow] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(providerSyncFiles)
+    .where(eq(providerSyncFiles.providerKey, "kbiz"));
+  const processedRows = await db
+    .select({
+      id: providerSyncFiles.id,
+      filePath: providerSyncFiles.filePath,
+      fileSignature: providerSyncFiles.fileSignature,
+      importedAt: providerSyncFiles.importedAt,
+      sourceCreatedAt: providerSyncFiles.sourceCreatedAt
+    })
+    .from(providerSyncFiles)
+    .where(eq(providerSyncFiles.providerKey, "kbiz"))
+    .orderBy(desc(providerSyncFiles.importedAt))
+    .limit(8);
+  const eventRows = await db
+    .select({
+      id: webhookEvents.id,
+      createdAt: webhookEvents.createdAt,
+      processed: webhookEvents.processed,
+      payloadJson: webhookEvents.payloadJson
+    })
+    .from(webhookEvents)
+    .where(and(eq(webhookEvents.providerKey, "kbiz_import"), eq(webhookEvents.eventType, "statement.file.processed")))
+    .orderBy(desc(webhookEvents.createdAt))
+    .limit(8);
+
+  return {
+    latestImportAt: processedRows[0]?.importedAt.toISOString() ?? null,
+    processedFiles: Number(countRow?.total ?? 0),
+    recentProcessedFiles: processedRows.map((row) => ({
+      id: row.id,
+      filePath: row.filePath,
+      fileSignature: row.fileSignature,
+      importedAt: row.importedAt.toISOString(),
+      sourceCreatedAt: row.sourceCreatedAt?.toISOString() ?? null
+    })),
+    recentEvents: eventRows.map((row) => ({
+      id: row.id,
+      createdAt: row.createdAt.toISOString(),
+      processed: row.processed,
+      payloadJson: row.payloadJson
+    }))
   };
 }
 
@@ -1952,8 +2227,35 @@ export async function importInventoryBatch(
   return values.length;
 }
 
-export async function getJobsList() {
-  return db.select().from(jobs).orderBy(desc(jobs.createdAt));
+export async function getJobsList(jobFilters?: {
+  kind?: string;
+  status?: string;
+  query?: string;
+} & AdminPaginationInput) {
+  const rows = await db.select().from(jobs).orderBy(desc(jobs.createdAt));
+  const normalizedKind = jobFilters?.kind?.trim().toLowerCase() ?? "all";
+  const normalizedStatus = jobFilters?.status?.trim().toLowerCase() ?? "all";
+  const normalizedQuery = jobFilters?.query?.trim().toLowerCase() ?? "";
+
+  const filteredRows = rows.filter((row) => {
+    if (normalizedKind !== "all" && row.kind.toLowerCase() !== normalizedKind) {
+      return false;
+    }
+
+    if (normalizedStatus !== "all" && row.status.toLowerCase() !== normalizedStatus) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    return [row.id, row.kind, row.status, row.payloadJson, row.lastError ?? ""].some((value) =>
+      value.toLowerCase().includes(normalizedQuery)
+    );
+  });
+
+  return paginateAdminItems(filteredRows, jobFilters, 8);
 }
 
 export async function requeueJob(jobId: string) {

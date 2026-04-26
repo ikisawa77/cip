@@ -2,6 +2,7 @@ import type { ProviderAdapter } from "./types";
 import { peamsub24hrAdapter } from "./peamsub24hr";
 import { createScaffoldAdapter } from "./scaffold";
 import { pays24SellerAdapter } from "./pays24seller";
+import { rdcwAdapter } from "./rdcw";
 import { wepayAdapter } from "./wepay";
 
 export const providerKeys = ["promptpay", "wepay", "24payseller", "peamsub24hr", "kbiz", "truemoney", "rdcw"] as const;
@@ -10,7 +11,6 @@ export type ProviderKey = (typeof providerKeys)[number];
 const promptpayAdapter = createScaffoldAdapter("promptpay", "PromptPay");
 const walletAdapter = createScaffoldAdapter("kbiz", "K-BIZ / Wallet Matching");
 const trueMoneyAdapter = createScaffoldAdapter("truemoney", "TrueMoney");
-const rdcwAdapter = createScaffoldAdapter("rdcw", "RDCW");
 
 const providerAdapters: Record<ProviderKey, ProviderAdapter> = {
   promptpay: promptpayAdapter,
@@ -30,6 +30,8 @@ export function getProviderKeyForProductType(productType?: string | null): Provi
       return "peamsub24hr";
     case "ID_PASS_ORDER":
       return "24payseller";
+    case "ACCOUNT_STOCK":
+      return "rdcw";
     case "WALLET_TOPUP":
       return "kbiz";
     default:

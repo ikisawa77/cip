@@ -2,14 +2,27 @@
 setlocal
 
 cd /d "%~dp0"
+set "VOLTA_BIN=C:\Program Files\Volta"
 set "PNPM_CMD="
 
+if not exist "%VOLTA_BIN%\node.exe" goto doctor_without_volta
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:Path='%VOLTA_BIN%;'+$env:Path; & '%~dp0scripts\doctor-local.ps1' -Mode run"
+goto doctor_done
+
+:doctor_without_volta
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\doctor-local.ps1" -Mode run
+
+:doctor_done
 if errorlevel 1 (
   pause
   exit /b 1
 )
 
+if not exist "%VOLTA_BIN%\pnpm.cmd" goto find_pnpm
+set "PNPM_CMD=%VOLTA_BIN%\pnpm.cmd"
+goto :pnpm_found
+
+:find_pnpm
 for /f "delims=" %%I in ('where pnpm.cmd 2^>nul') do (
   set "PNPM_CMD=%%I"
   goto :pnpm_found

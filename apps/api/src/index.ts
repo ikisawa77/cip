@@ -51,6 +51,7 @@ import { minutesFromNow, now } from "./lib/time";
 import { isProviderKey } from "./providers/registry";
 import { map24PaysellerStatus } from "./providers/pays24seller";
 import { mapPeamsub24hrStatus } from "./providers/peamsub24hr";
+import { mapRdcwStatus } from "./providers/rdcw";
 import { mapTruemoneyPaymentStatus } from "./providers/truemoney";
 import { mapWepayStatus } from "./providers/wepay";
 import {
@@ -69,9 +70,11 @@ import {
   getAdminInventoryItems,
   getAdminInventorySummary,
   getAdminOrders,
+  getAdminWebhookEvents,
   getPromptpayConfigForWebhook,
   getAdminPaymentIntents,
   getAdminProviders,
+  getKbizMonitoringSummary,
   getCatalog,
   getFooterContent,
   getHomepageContent,
@@ -87,6 +90,7 @@ import {
   applyProviderOrderUpdate,
   processPendingJobs,
   requeueJob,
+  replayWebhookEventByAdmin,
   refundOrderByAdmin,
   settlePaymentByReference,
   settlePaymentByReferenceWithAmount,
@@ -136,6 +140,15 @@ function parseWebhookAmountCents(value: unknown) {
   }
 
   return Math.round(normalized * 100);
+}
+
+function parsePaginationNumber(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.max(1, Math.round(parsed));
 }
 
 async function trimUserSessions(userId: string) {
@@ -609,7 +622,9 @@ app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
   const status = typeof _req.query.status === "string" ? _req.query.status : undefined;
   const paymentMethod = typeof _req.query.paymentMethod === "string" ? _req.query.paymentMethod : undefined;
   const providerKey = typeof _req.query.providerKey === "string" ? _req.query.providerKey : undefined;
-  res.json(await getAdminOrders({ query, status, paymentMethod, providerKey }));
+  const page = parsePaginationNumber(_req.query.page, 1);
+  const pageSize = parsePaginationNumber(_req.query.pageSize, 8);
+  res.json(await getAdminOrders({ query, status, paymentMethod, providerKey, page, pageSize }));
 });
 
 app.get("/api/admin/audit-logs", requireAdmin, async (req, res) => {
@@ -617,11 +632,18 @@ app.get("/api/admin/audit-logs", requireAdmin, async (req, res) => {
   const entityId = typeof req.query.entityId === "string" ? req.query.entityId : undefined;
   const action = typeof req.query.action === "string" ? req.query.action : undefined;
   const query = typeof req.query.query === "string" ? req.query.query : undefined;
-  res.json(await getAdminAuditLogs({ entityType, entityId, action, query }));
+  const page = parsePaginationNumber(req.query.page, 1);
+  const pageSize = parsePaginationNumber(req.query.pageSize, 8);
+  res.json(await getAdminAuditLogs({ entityType, entityId, action, query, page, pageSize }));
 });
 
 app.get("/api/admin/payment-intents", requireAdmin, async (_req, res) => {
-  res.json(await getAdminPaymentIntents());
+  const query = typeof _req.query.query === "string" ? _req.query.query : undefined;
+  const provider = typeof _req.query.provider === "string" ? _req.query.provider : undefined;
+  const status = typeof _req.query.status === "string" ? _req.query.status : undefined;
+  const page = parsePaginationNumber(_req.query.page, 1);
+  const pageSize = parsePaginationNumber(_req.query.pageSize, 8);
+  res.json(await getAdminPaymentIntents({ query, provider, status, page, pageSize }));
 });
 
 app.post("/api/admin/payment-intents/:id/status", requireAdmin, async (req, res) => {
@@ -867,8 +889,26 @@ app.post("/api/admin/providers/:providerKey/sync", requireAdmin, async (req, res
   res.json(await syncProvider(providerKey));
 });
 
-app.get("/api/admin/webhooks", requireAdmin, async (_req, res) => {
-  res.json(await db.select().from(webhookEvents).orderBy(desc(webhookEvents.createdAt)));
+app.get("/api/admin/webhooks", requireAdmin, async (req, res) => {
+  const query = typeof req.query.query === "string" ? req.query.query : undefined;
+  const providerKey = typeof req.query.providerKey === "string" ? req.query.providerKey : undefined;
+  const eventType = typeof req.query.eventType === "string" ? req.query.eventType : undefined;
+  const processed = typeof req.query.processed === "string" ? req.query.processed : undefined;
+  const page = parsePaginationNumber(req.query.page, 1);
+  const pageSize = parsePaginationNumber(req.query.pageSize, 8);
+  res.json(await getAdminWebhookEvents({ query, providerKey, eventType, processed, page, pageSize }));
+});
+
+app.post("/api/admin/webhooks/:id/replay", requireAdmin, async (req, res) => {
+  try {
+    res.json(await replayWebhookEventByAdmin(String(req.params.id), req.authUser?.id));
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "webhook replay failed" });
+  }
+});
+
+app.get("/api/admin/kbiz-monitoring", requireAdmin, async (_req, res) => {
+  res.json(await getKbizMonitoringSummary());
 });
 
 app.get("/api/admin/inventory", requireAdmin, async (_req, res) => {
@@ -940,8 +980,13 @@ app.post("/api/admin/inventory/import", requireAdmin, async (req, res) => {
   res.status(201).json({ imported: count });
 });
 
-app.get("/api/admin/jobs", requireAdmin, async (_req, res) => {
-  res.json(await getJobsList());
+app.get("/api/admin/jobs", requireAdmin, async (req, res) => {
+  const kind = typeof req.query.kind === "string" ? req.query.kind : undefined;
+  const status = typeof req.query.status === "string" ? req.query.status : undefined;
+  const query = typeof req.query.query === "string" ? req.query.query : undefined;
+  const page = parsePaginationNumber(req.query.page, 1);
+  const pageSize = parsePaginationNumber(req.query.pageSize, 8);
+  res.json(await getJobsList({ kind, status, query, page, pageSize }));
 });
 
 app.post("/api/admin/jobs/:id/requeue", requireAdmin, async (req, res) => {
@@ -1183,6 +1228,62 @@ app.post("/api/webhooks/peamsub24hr/order-update", async (req, res) => {
           : null,
     status,
     note: typeof req.body.note === "string" ? req.body.note : `Peamsub24hr callback status=${rawStatus}`,
+    payload: { ...req.body, normalizedStatus: status },
+    deliveryPayload
+  });
+
+  res.status(result.ok ? 200 : 404).json(result);
+});
+
+app.post("/api/webhooks/rdcw/order-update", async (req, res) => {
+  const rdcw = await getProviderConfigSnapshot("rdcw");
+  const configuredSecret =
+    typeof rdcw.config.callbackSecret === "string" && rdcw.config.callbackSecret.trim()
+      ? rdcw.config.callbackSecret.trim()
+      : null;
+  const suppliedSecret = String(req.header("x-provider-secret") ?? req.body.callbackSecret ?? "");
+
+  if (configuredSecret && suppliedSecret !== configuredSecret) {
+    res.status(403).json({ message: "invalid callback secret" });
+    return;
+  }
+
+  const rawStatus = String(req.body.status ?? "").trim();
+  if (!rawStatus) {
+    res.status(400).json({ message: "missing status" });
+    return;
+  }
+
+  const status = mapRdcwStatus(rawStatus);
+  const deliveryPayloadCandidate =
+    typeof req.body.deliveryPayload === "string"
+      ? req.body.deliveryPayload
+      : req.body.code || req.body.pin || req.body.serial || req.body.downloadUrl
+        ? {
+            code: req.body.code ?? null,
+            pin: req.body.pin ?? null,
+            serial: req.body.serial ?? null,
+            downloadUrl: req.body.downloadUrl ?? null
+          }
+        : null;
+  const deliveryPayload =
+    typeof deliveryPayloadCandidate === "string"
+      ? deliveryPayloadCandidate
+      : deliveryPayloadCandidate && typeof deliveryPayloadCandidate === "object"
+        ? JSON.stringify(deliveryPayloadCandidate, null, 2)
+        : null;
+
+  const result = await applyProviderOrderUpdate({
+    providerKey: "rdcw",
+    orderId: typeof req.body.orderId === "string" ? req.body.orderId : null,
+    providerOrderId:
+      typeof req.body.providerOrderId === "string"
+        ? req.body.providerOrderId
+        : typeof req.body.refId === "string"
+          ? req.body.refId
+          : null,
+    status,
+    note: typeof req.body.note === "string" ? req.body.note : `RDCW callback status=${rawStatus}`,
     payload: { ...req.body, normalizedStatus: status },
     deliveryPayload
   });

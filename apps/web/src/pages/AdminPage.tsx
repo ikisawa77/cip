@@ -115,6 +115,32 @@ type WebhookEventRow = {
   createdAt: string;
 };
 
+type PaginatedResponse<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+type KbizMonitoringRow = {
+  latestImportAt: string | null;
+  processedFiles: number;
+  recentProcessedFiles: Array<{
+    id: string;
+    filePath: string;
+    fileSignature: string;
+    importedAt: string;
+    sourceCreatedAt: string | null;
+  }>;
+  recentEvents: Array<{
+    id: string;
+    createdAt: string;
+    processed: boolean;
+    payloadJson: string;
+  }>;
+};
+
 type OrderDetailRow = {
   id: string;
   status: string;
@@ -148,6 +174,7 @@ type JobRow = {
   status: string;
   payloadJson: string;
   updatedAt: string;
+  lastError?: string | null;
 };
 
 type PaymentIntentRow = {
@@ -279,6 +306,23 @@ const providerConfigExamples: Record<string, { title: string; description: strin
       callbackSecret: "truemoney-dev-secret",
       acceptedStatuses: ["success", "redeemed", "completed"],
       notes: "POST /api/webhooks/truemoney with referenceCode and status=success"
+    }
+  },
+  rdcw: {
+    title: "ตัวอย่าง config สำหรับ RDCW bridge",
+    description: "เหมาะกับสินค้า account stock หรือ code delivery ที่ provider จะตอบกลับผ่าน webhook พร้อม code / pin / serial / downloadUrl",
+    value: {
+      mode: "webhook",
+      endpoint: "https://provider.example.com/api/stock-orders",
+      method: "POST",
+      apiKey: "replace-me",
+      authHeaderName: "Authorization",
+      authScheme: "Bearer",
+      callbackSecret: "rdcw-dev-secret",
+      staticPayload: {
+        source: "cip-store",
+        category: "account-stock"
+      }
     }
   }
 };
@@ -460,6 +504,7 @@ type AdminSavedFilters = {
   webhookSearch: string;
   webhookProviderFilter: string;
   webhookEventTypeFilter: string;
+  webhookProcessedFilter: string;
 };
 
 function readAdminSavedFilters(): Partial<AdminSavedFilters> {
@@ -593,8 +638,12 @@ export function AdminPage() {
   const [webhookSearch, setWebhookSearch] = useState(initialSavedFilters.webhookSearch ?? "");
   const [webhookProviderFilter, setWebhookProviderFilter] = useState(initialSavedFilters.webhookProviderFilter ?? "all");
   const [webhookEventTypeFilter, setWebhookEventTypeFilter] = useState(initialSavedFilters.webhookEventTypeFilter ?? "all");
+  const [webhookProcessedFilter, setWebhookProcessedFilter] = useState(initialSavedFilters.webhookProcessedFilter ?? "all");
   const [webhookPage, setWebhookPage] = useState(1);
   const [selectedWebhookId, setSelectedWebhookId] = useState<string | null>(null);
+  const [webhookMessage, setWebhookMessage] = useState<string | null>(null);
+  const [webhookError, setWebhookError] = useState<string | null>(null);
+  const [jobsPage, setJobsPage] = useState(1);
   const [paymentMatcherPayload, setPaymentMatcherPayload] = useState(
     JSON.stringify(
       [
@@ -653,14 +702,16 @@ export function AdminPage() {
   });
 
   const orderQuery = useQuery({
-    queryKey: ["admin", "orders", orderSearch, orderStatusFilter, orderPaymentMethodFilter, orderProviderFilter],
+    queryKey: ["admin", "orders", orderSearch, orderStatusFilter, orderPaymentMethodFilter, orderProviderFilter, ordersPage],
     queryFn: () =>
-      apiFetch<OrderRow[]>(
+      apiFetch<PaginatedResponse<OrderRow>>(
         `/api/admin/orders${buildQueryString({
           query: orderSearch,
           status: orderStatusFilter !== "all" ? orderStatusFilter : undefined,
           paymentMethod: orderPaymentMethodFilter !== "all" ? orderPaymentMethodFilter : undefined,
-          providerKey: orderProviderFilter !== "all" ? orderProviderFilter : undefined
+          providerKey: orderProviderFilter !== "all" ? orderProviderFilter : undefined,
+          page: String(ordersPage),
+          pageSize: "8"
         })}`
       ),
     enabled: user?.role === "admin"
@@ -673,9 +724,9 @@ export function AdminPage() {
   });
 
   const auditLogsQuery = useQuery({
-    queryKey: ["admin", "audit-logs", selectedOrderId, auditSearch, auditEntityTypeFilter, auditActionFilter],
+    queryKey: ["admin", "audit-logs", selectedOrderId, auditSearch, auditEntityTypeFilter, auditActionFilter, auditPage],
     queryFn: () =>
-      apiFetch<AuditLogRow[]>(
+      apiFetch<PaginatedResponse<AuditLogRow>>(
         `/api/admin/audit-logs${buildQueryString({
           entityType:
             selectedOrderId || auditEntityTypeFilter === "all"
@@ -685,7 +736,9 @@ export function AdminPage() {
               : auditEntityTypeFilter,
           entityId: selectedOrderId,
           action: auditActionFilter !== "all" ? auditActionFilter : undefined,
-          query: auditSearch
+          query: auditSearch,
+          page: String(auditPage),
+          pageSize: "8"
         })}`
       ),
     enabled: user?.role === "admin"
@@ -704,18 +757,42 @@ export function AdminPage() {
   });
 
   const jobsQuery = useQuery({
-    queryKey: ["admin", "jobs"],
-    queryFn: () => apiFetch<JobRow[]>("/api/admin/jobs"),
+    queryKey: ["admin", "jobs", jobsPage],
+    queryFn: () => apiFetch<PaginatedResponse<JobRow>>(`/api/admin/jobs${buildQueryString({ page: String(jobsPage), pageSize: "8" })}`),
     enabled: user?.role === "admin"
   });
   const paymentIntentsQuery = useQuery({
-    queryKey: ["admin", "payment-intents"],
-    queryFn: () => apiFetch<PaymentIntentRow[]>("/api/admin/payment-intents"),
+    queryKey: ["admin", "payment-intents", paymentSearch, paymentProviderFilter, paymentStatusFilter, paymentPage],
+    queryFn: () =>
+      apiFetch<PaginatedResponse<PaymentIntentRow>>(
+        `/api/admin/payment-intents${buildQueryString({
+          query: paymentSearch,
+          provider: paymentProviderFilter !== "all" ? paymentProviderFilter : undefined,
+          status: paymentStatusFilter !== "all" ? paymentStatusFilter : undefined,
+          page: String(paymentPage),
+          pageSize: "8"
+        })}`
+      ),
+    enabled: user?.role === "admin"
+  });
+  const kbizMonitoringQuery = useQuery({
+    queryKey: ["admin", "kbiz-monitoring"],
+    queryFn: () => apiFetch<KbizMonitoringRow>("/api/admin/kbiz-monitoring"),
     enabled: user?.role === "admin"
   });
   const webhooksQuery = useQuery({
-    queryKey: ["admin", "webhooks"],
-    queryFn: () => apiFetch<WebhookEventRow[]>("/api/admin/webhooks"),
+    queryKey: ["admin", "webhooks", webhookSearch, webhookProviderFilter, webhookEventTypeFilter, webhookProcessedFilter, webhookPage],
+    queryFn: () =>
+      apiFetch<PaginatedResponse<WebhookEventRow>>(
+        `/api/admin/webhooks${buildQueryString({
+          query: webhookSearch,
+          providerKey: webhookProviderFilter !== "all" ? webhookProviderFilter : undefined,
+          eventType: webhookEventTypeFilter !== "all" ? webhookEventTypeFilter : undefined,
+          processed: webhookProcessedFilter !== "all" ? webhookProcessedFilter : undefined,
+          page: String(webhookPage),
+          pageSize: "8"
+        })}`
+      ),
     enabled: user?.role === "admin"
   });
 
@@ -745,12 +822,42 @@ export function AdminPage() {
       apiFetch<{ providerKey: string; ok: boolean; note: string }>(`/api/admin/providers/${providerKey}/sync`, {
         method: "POST",
         body: JSON.stringify({})
-      }),
-    onSuccess: (result) => {
+    }),
+    onSuccess: async (result) => {
       setProviderSyncMessage(`${result.providerKey}: ${result.note}`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "webhooks"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "kbiz-monitoring"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "jobs"] })
+      ]);
     },
     onError: (error) => {
       setProviderSyncMessage(error instanceof Error ? error.message : "sync provider ไม่สำเร็จ");
+    }
+  });
+
+  const webhookReplayMutation = useMutation({
+    mutationFn: (webhookId: string) =>
+      apiFetch<{ ok: boolean; message: string }>(`/api/admin/webhooks/${webhookId}/replay`, {
+        method: "POST",
+        body: JSON.stringify({})
+      }),
+    onSuccess: async (result) => {
+      setWebhookError(null);
+      setWebhookMessage(result.message);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "webhooks"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "orders", "detail"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "audit-logs"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "kbiz-monitoring"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "payment-intents"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] })
+      ]);
+    },
+    onError: (error) => {
+      setWebhookMessage(null);
+      setWebhookError(error instanceof Error ? error.message : "replay webhook ไม่สำเร็จ");
     }
   });
 
@@ -1139,8 +1246,7 @@ export function AdminPage() {
   }, [providerQuery.data, selectedProvider]);
 
   useEffect(() => {
-    const operationsPageStart = (ordersPage - 1) * 6;
-    const operationsPageOrders = (orderQuery.data ?? []).slice(operationsPageStart, operationsPageStart + 6);
+    const operationsPageOrders = orderQuery.data?.items ?? [];
     const firstOrder = operationsPageOrders[0];
     if (!firstOrder) {
       if (selectedOrderId) {
@@ -1153,7 +1259,7 @@ export function AdminPage() {
     if (!selectedOrderId || !stillExists) {
       setSelectedOrderId(firstOrder.id);
     }
-  }, [orderQuery.data, ordersPage, selectedOrderId]);
+  }, [orderQuery.data, selectedOrderId]);
 
   useEffect(() => {
     writeAdminSavedFilters({
@@ -1169,7 +1275,8 @@ export function AdminPage() {
       auditActionFilter,
       webhookSearch,
       webhookProviderFilter,
-      webhookEventTypeFilter
+      webhookEventTypeFilter,
+      webhookProcessedFilter
     });
   }, [
     paymentSearch,
@@ -1184,7 +1291,8 @@ export function AdminPage() {
     auditActionFilter,
     webhookSearch,
     webhookProviderFilter,
-    webhookEventTypeFilter
+    webhookEventTypeFilter,
+    webhookProcessedFilter
   ]);
 
   useEffect(() => {
@@ -1201,29 +1309,11 @@ export function AdminPage() {
 
   useEffect(() => {
     setWebhookPage(1);
-  }, [webhookSearch, webhookProviderFilter, webhookEventTypeFilter]);
+  }, [webhookSearch, webhookProviderFilter, webhookEventTypeFilter, webhookProcessedFilter]);
 
   useEffect(() => {
-    const filteredWebhookRows = (webhooksQuery.data ?? []).filter((event) => {
-      if (webhookProviderFilter !== "all" && event.providerKey !== webhookProviderFilter) {
-        return false;
-      }
-
-      if (webhookEventTypeFilter !== "all" && event.eventType !== webhookEventTypeFilter) {
-        return false;
-      }
-
-      const normalizedSearch = webhookSearch.trim().toLowerCase();
-      if (!normalizedSearch) {
-        return true;
-      }
-
-      return [event.providerKey, event.eventType, event.payloadJson, event.id].some((value) =>
-        value.toLowerCase().includes(normalizedSearch)
-      );
-    });
-    const webhookPageStart = (webhookPage - 1) * 8;
-    const firstWebhook = filteredWebhookRows.slice(webhookPageStart, webhookPageStart + 8)[0] ?? null;
+    const currentWebhookRows = webhooksQuery.data?.items ?? [];
+    const firstWebhook = currentWebhookRows[0] ?? null;
 
     if (!firstWebhook) {
       if (selectedWebhookId) {
@@ -1232,11 +1322,11 @@ export function AdminPage() {
       return;
     }
 
-    const stillExists = filteredWebhookRows.some((event) => event.id === selectedWebhookId);
+    const stillExists = currentWebhookRows.some((event) => event.id === selectedWebhookId);
     if (!selectedWebhookId || !stillExists) {
       setSelectedWebhookId(firstWebhook.id);
     }
-  }, [selectedWebhookId, webhookEventTypeFilter, webhookPage, webhookProviderFilter, webhookSearch, webhooksQuery.data]);
+  }, [selectedWebhookId, webhooksQuery.data]);
 
   useEffect(() => {
     if (!homepageContentQuery.data) {
@@ -1291,49 +1381,19 @@ export function AdminPage() {
   const products = productsQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
   const inventoryItems = inventoryItemsQuery.data ?? [];
-  const paymentIntents = (paymentIntentsQuery.data ?? []).filter((intent) => {
-    if (paymentProviderFilter !== "all" && intent.provider !== paymentProviderFilter) {
-      return false;
-    }
-
-    if (paymentStatusFilter !== "all" && intent.status !== paymentStatusFilter) {
-      return false;
-    }
-
-    const normalizedSearch = paymentSearch.trim().toLowerCase();
-    if (!normalizedSearch) {
-      return true;
-    }
-
-    return [intent.referenceCode, intent.userEmail, intent.userDisplayName, intent.id, intent.targetId]
-      .filter(Boolean)
-      .some((value) => value.toLowerCase().includes(normalizedSearch));
-  });
-  const pagedPaymentIntents = paginateItems(paymentIntents, paymentPage, 8);
-  const orders = orderQuery.data ?? [];
-  const pagedOrders = paginateItems(orders, ordersPage, 8);
-  const operationsOrders = paginateItems(orders, ordersPage, 6);
-  const auditLogs = auditLogsQuery.data ?? [];
-  const pagedAuditLogs = paginateItems(auditLogs, auditPage, 8);
-  const webhooks = (webhooksQuery.data ?? []).filter((event) => {
-    if (webhookProviderFilter !== "all" && event.providerKey !== webhookProviderFilter) {
-      return false;
-    }
-
-    if (webhookEventTypeFilter !== "all" && event.eventType !== webhookEventTypeFilter) {
-      return false;
-    }
-
-    const normalizedSearch = webhookSearch.trim().toLowerCase();
-    if (!normalizedSearch) {
-      return true;
-    }
-
-    return [event.providerKey, event.eventType, event.payloadJson, event.id].some((value) => value.toLowerCase().includes(normalizedSearch));
-  });
-  const pagedWebhooks = paginateItems(webhooks, webhookPage, 8);
-  const selectedWebhook = webhooks.find((event) => event.id === selectedWebhookId) ?? pagedWebhooks.items[0] ?? null;
-  const webhookEventTypes = Array.from(new Set((webhooksQuery.data ?? []).map((event) => event.eventType))).sort();
+  const pagedPaymentIntents =
+    paymentIntentsQuery.data ?? ({ items: [], total: 0, page: paymentPage, pageSize: 8, totalPages: 1 } satisfies PaginatedResponse<PaymentIntentRow>);
+  const pagedOrders =
+    orderQuery.data ?? ({ items: [], total: 0, page: ordersPage, pageSize: 8, totalPages: 1 } satisfies PaginatedResponse<OrderRow>);
+  const operationsOrders = pagedOrders;
+  const pagedAuditLogs =
+    auditLogsQuery.data ?? ({ items: [], total: 0, page: auditPage, pageSize: 8, totalPages: 1 } satisfies PaginatedResponse<AuditLogRow>);
+  const pagedWebhooks =
+    webhooksQuery.data ?? ({ items: [], total: 0, page: webhookPage, pageSize: 8, totalPages: 1 } satisfies PaginatedResponse<WebhookEventRow>);
+  const selectedWebhook = pagedWebhooks.items.find((event) => event.id === selectedWebhookId) ?? pagedWebhooks.items[0] ?? null;
+  const webhookEventTypes = Array.from(new Set((webhooksQuery.data?.items ?? []).map((event) => event.eventType))).sort();
+  const pagedJobs =
+    jobsQuery.data ?? ({ items: [], total: 0, page: jobsPage, pageSize: 8, totalPages: 1 } satisfies PaginatedResponse<JobRow>);
   const filteredProducts =
     inventoryCategoryFilter === "all" ? products : products.filter((product) => product.categoryId === inventoryCategoryFilter);
   const filteredInventoryItems = inventoryItems.filter((item) => {
@@ -1371,6 +1431,7 @@ export function AdminPage() {
     setWebhookSearch("");
     setWebhookProviderFilter("all");
     setWebhookEventTypeFilter("all");
+    setWebhookProcessedFilter("all");
   }
 
   function clearSavedAdminFilters() {
@@ -2613,7 +2674,7 @@ export function AdminPage() {
               <p className="mt-2 text-sm muted-text">ใช้ยืนยันการโอนจากหลังบ้าน หรือทำเครื่องหมายว่า failed / expired ได้โดยไม่ต้องพึ่งปุ่ม dev</p>
             </div>
             <div className="rounded-full border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-slate-600">
-              ทั้งหมด {paymentIntents.length} รายการ
+              ทั้งหมด {pagedPaymentIntents.total} รายการ
             </div>
           </div>
 
@@ -2721,7 +2782,7 @@ export function AdminPage() {
                 </div>
               </div>
             ))}
-            {paymentIntents.length === 0 ? (
+            {pagedPaymentIntents.total === 0 ? (
               <div className="rounded-[1.6rem] border border-dashed border-[var(--line)] px-4 py-5 text-sm muted-text">ยังไม่มี payment intent ให้จัดการ</div>
             ) : null}
           </div>
@@ -3105,10 +3166,10 @@ export function AdminPage() {
             <p className="mt-2 text-sm muted-text">ใช้ไล่ callback จาก provider, payment matcher และ event ภายในได้จากหน้าจอเดียว</p>
           </div>
           <div className="rounded-full border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-slate-600">
-            ทั้งหมด {webhooks.length} รายการ
+            ทั้งหมด {pagedWebhooks.total} รายการ
           </div>
         </div>
-        <div className="mt-4 grid gap-3 xl:grid-cols-[1.2fr_0.8fr_0.9fr_auto]">
+        <div className="mt-4 grid gap-3 xl:grid-cols-[1.2fr_0.8fr_0.9fr_0.8fr_auto]">
           <input className="input-field" onChange={(event) => setWebhookSearch(event.target.value)} placeholder="ค้นหา provider / event / payload / id" value={webhookSearch} />
           <select className="input-field" onChange={(event) => setWebhookProviderFilter(event.target.value)} value={webhookProviderFilter}>
             <option value="all">ทุก provider</option>
@@ -3119,6 +3180,8 @@ export function AdminPage() {
             <option value="24payseller">24payseller</option>
             <option value="peamsub24hr">peamsub24hr</option>
             <option value="kbiz">kbiz</option>
+            <option value="kbiz_import">kbiz_import</option>
+            <option value="rdcw">rdcw</option>
           </select>
           <select className="input-field" onChange={(event) => setWebhookEventTypeFilter(event.target.value)} value={webhookEventTypeFilter}>
             <option value="all">ทุก event type</option>
@@ -3128,10 +3191,17 @@ export function AdminPage() {
               </option>
             ))}
           </select>
+          <select className="input-field" onChange={(event) => setWebhookProcessedFilter(event.target.value)} value={webhookProcessedFilter}>
+            <option value="all">processed + pending</option>
+            <option value="processed">processed only</option>
+            <option value="pending">pending only</option>
+          </select>
           <button className="secondary-button rounded-full px-4 py-2 text-xs" onClick={resetWebhookFilters} type="button">
             รีเซ็ต filter
           </button>
         </div>
+        {webhookMessage ? <div className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{webhookMessage}</div> : null}
+        {webhookError ? <div className="mt-3 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{webhookError}</div> : null}
         <div className="mt-4 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
           <div className="space-y-3">
             {pagedWebhooks.items.map((event) => {
@@ -3156,7 +3226,7 @@ export function AdminPage() {
                 </button>
               );
             })}
-            {webhooks.length === 0 ? (
+            {pagedWebhooks.total === 0 ? (
               <div className="rounded-[1.6rem] border border-dashed border-[var(--line)] px-4 py-5 text-sm muted-text">ยังไม่มี webhook event ให้ตรวจสอบ</div>
             ) : null}
             <PaginationControls onPageChange={setWebhookPage} page={pagedWebhooks.page} totalPages={pagedWebhooks.totalPages} />
@@ -3176,6 +3246,16 @@ export function AdminPage() {
                     {selectedWebhook.processed ? "processed" : "pending"}
                   </div>
                 </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    className="primary-button rounded-full px-4 py-2 text-xs"
+                    disabled={webhookReplayMutation.isPending}
+                    onClick={() => void webhookReplayMutation.mutate(selectedWebhook.id)}
+                    type="button"
+                  >
+                    {webhookReplayMutation.isPending ? "กำลัง replay..." : "replay webhook"}
+                  </button>
+                </div>
                 <div className="mt-4 rounded-[1.25rem] bg-white/80 px-4 py-3">
                   <div className="font-medium text-slate-950">Webhook Payload</div>
                   <pre className="mt-2 overflow-auto rounded-xl bg-slate-950 px-3 py-3 text-xs text-slate-100">{selectedWebhook.payloadJson}</pre>
@@ -3184,6 +3264,62 @@ export function AdminPage() {
             ) : (
               <div className="text-sm text-slate-500">เลือก webhook event เพื่อดู payload แบบเต็ม</div>
             )}
+          </div>
+        </div>
+      </section>
+
+      <section className="panel rounded-[2.5rem] p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="section-head">
+              <div className="section-head__icon">
+                <FolderCog size={18} />
+              </div>
+              <p className="section-label">K-Biz Monitoring</p>
+            </div>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">ติดตามงาน ingest และ statement sync</h2>
+            <p className="mt-2 text-sm muted-text">ดูไฟล์ล่าสุดที่ระบบนำเข้า, event ที่ถูกประมวลผล, และใช้หน้า webhook viewer replay งานซ้ำได้ทันทีเมื่อจำเป็น</p>
+          </div>
+          <div className="rounded-full border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-slate-600">
+            ล่าสุด {kbizMonitoringQuery.data?.latestImportAt ? formatDate(kbizMonitoringQuery.data.latestImportAt) : "ยังไม่มี import"}
+          </div>
+        </div>
+        <div className="mt-4 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <div className="space-y-3">
+            <div className="panel-soft rounded-[1.5rem] px-4 py-4">
+              <div className="text-xs uppercase tracking-[0.24em] text-[var(--brand)]">Processed Files</div>
+              <div className="mt-2 text-3xl font-semibold text-slate-950">{kbizMonitoringQuery.data?.processedFiles ?? 0}</div>
+              <div className="mt-2 text-sm text-slate-500">ไฟล์ statement ที่ระบบ ingest และบันทึก signature ไว้แล้ว</div>
+            </div>
+            {(kbizMonitoringQuery.data?.recentProcessedFiles ?? []).map((file) => (
+              <div className="panel-soft rounded-[1.5rem] px-4 py-4" key={file.id}>
+                <div className="text-sm font-medium text-slate-900">{file.filePath}</div>
+                <div className="mt-1 text-xs text-slate-500">{file.fileSignature}</div>
+                <div className="mt-2 text-xs text-slate-500">imported {formatDate(file.importedAt)}</div>
+              </div>
+            ))}
+            {(kbizMonitoringQuery.data?.recentProcessedFiles?.length ?? 0) === 0 ? (
+              <div className="rounded-[1.6rem] border border-dashed border-[var(--line)] px-4 py-5 text-sm muted-text">ยังไม่มีประวัติ import K-Biz ในระบบ</div>
+            ) : null}
+          </div>
+          <div className="panel-soft rounded-[1.75rem] p-5">
+            <div className="text-xs uppercase tracking-[0.24em] text-[var(--brand)]">Recent Import Events</div>
+            <div className="mt-4 space-y-3">
+              {(kbizMonitoringQuery.data?.recentEvents ?? []).map((event) => (
+                <div className="rounded-[1.4rem] bg-white/80 px-4 py-4" key={event.id}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-slate-900">{formatDate(event.createdAt)}</div>
+                    <div className={`rounded-full px-3 py-1 text-[11px] font-medium ${event.processed ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                      {event.processed ? "processed" : "pending"}
+                    </div>
+                  </div>
+                  <pre className="mt-3 overflow-auto rounded-xl bg-slate-950 px-3 py-3 text-xs text-slate-100">{event.payloadJson}</pre>
+                </div>
+              ))}
+              {(kbizMonitoringQuery.data?.recentEvents?.length ?? 0) === 0 ? (
+                <div className="rounded-[1.6rem] border border-dashed border-[var(--line)] px-4 py-5 text-sm muted-text">ยังไม่มี event import ให้ตรวจสอบ</div>
+              ) : null}
+            </div>
           </div>
         </div>
       </section>
@@ -3199,10 +3335,10 @@ export function AdminPage() {
             </div>
             <h2 className="mt-2 text-2xl font-semibold text-slate-950">งานค้างและงานที่พร้อม requeue</h2>
           </div>
-          <div className="rounded-full border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-slate-600">ทั้งหมด {jobsQuery.data?.length ?? 0} งาน</div>
+          <div className="rounded-full border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-slate-600">ทั้งหมด {pagedJobs.total} งาน</div>
         </div>
         <div className="mt-4 space-y-3">
-          {jobsQuery.data?.map((job) => (
+          {pagedJobs.items.map((job) => (
             <div className="panel-soft rounded-[1.5rem] px-4 py-4" key={job.id}>
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
@@ -3220,7 +3356,11 @@ export function AdminPage() {
               </div>
             </div>
           ))}
+          {pagedJobs.total === 0 ? (
+            <div className="rounded-[1.6rem] border border-dashed border-[var(--line)] px-4 py-5 text-sm muted-text">ยังไม่มีงานในคิวตอนนี้</div>
+          ) : null}
         </div>
+        <PaginationControls onPageChange={setJobsPage} page={pagedJobs.page} totalPages={pagedJobs.totalPages} />
       </section>
     </div>
   );

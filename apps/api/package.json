@@ -14,6 +14,7 @@
     "webhook:promptpay": "tsx src/scripts/send-promptpay-webhook.ts",
     "match:promptpay": "tsx src/scripts/match-promptpay-transactions.ts",
     "match:kbiz": "tsx src/scripts/match-kbiz-statement.ts",
+    "schedule:kbiz": "tsx src/scripts/run-kbiz-scheduler.ts",
     "test": "node --test --experimental-strip-types src/**/*.test.ts"
   },
   "dependencies": {

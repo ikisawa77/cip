@@ -16,6 +16,7 @@
     "dev": "pnpm --parallel --filter @cip/api --filter @cip/web run dev",
     "dev:web": "pnpm --filter @cip/web dev",
     "dev:api": "pnpm --filter @cip/api dev",
+    "kbiz:scheduler": "pnpm --filter @cip/api schedule:kbiz",
     "build": "pnpm -r build",
     "check": "pnpm -r check",
     "db:push": "pnpm --filter @cip/api db:push",
