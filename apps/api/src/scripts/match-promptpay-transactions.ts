@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 
-import { env } from "../config/env";
+import { env } from "../config/env.js";
 
 type CliOptions = {
   baseUrl: string;

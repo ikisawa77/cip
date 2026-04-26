@@ -1,4 +1,4 @@
-import type { ProviderPurchaseContext, ProviderPurchaseResult, ProviderSyncContext } from "./types";
+import type { ProviderPurchaseContext, ProviderPurchaseResult, ProviderSyncContext } from "./types.js";
 
 type WepayMode = "webhook" | "instant_success" | "instant_processing" | "manual_review";
 

@@ -1,4 +1,4 @@
-import type { ProviderAdapter, ProviderPurchaseContext } from "./types";
+import type { ProviderAdapter, ProviderPurchaseContext } from "./types.js";
 
 function buildScaffoldResult(label: string, context: ProviderPurchaseContext) {
   return {

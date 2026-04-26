@@ -2,8 +2,8 @@ import { footerContentDefaults, homepageContentDefaults, promptpayConfigDefaults
 
 import bcrypt from "bcryptjs";
 
-import { env } from "../config/env";
-import { db } from "./index";
+import { env } from "../config/env.js";
+import { db } from "./index.js";
 import {
   auditLogs,
   categories,
@@ -26,10 +26,10 @@ import {
   users,
   walletTransactions,
   webhookEvents
-} from "./schema";
-import { createId } from "../lib/ids";
-import { encryptPayload } from "../lib/security";
-import { now } from "../lib/time";
+} from "./schema.js";
+import { createId } from "../lib/ids.js";
+import { encryptPayload } from "../lib/security.js";
+import { now } from "../lib/time.js";
 
 async function main() {
   await db.delete(auditLogs);

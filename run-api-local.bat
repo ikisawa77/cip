@@ -57,8 +57,17 @@ if errorlevel 1 (
   exit /b 1
 )
 
+echo Building CIP API for stable local start...
+call "%PNPM_CMD%" --filter @cip/api build
+if errorlevel 1 (
+  echo.
+  echo API build failed.
+  pause
+  exit /b 1
+)
+
 echo Starting CIP API on http://localhost:3001
-call "%PNPM_CMD%" dev:api
+call "%PNPM_CMD%" --filter @cip/api start
 
 if errorlevel 1 (
   echo.

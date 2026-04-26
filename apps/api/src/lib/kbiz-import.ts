@@ -3,15 +3,15 @@ import path from "node:path";
 
 import { and, asc, eq, inArray } from "drizzle-orm";
 
-import { db } from "../db";
-import { providerConfigs, providerSyncFiles, webhookEvents } from "../db/schema";
-import { createId } from "./ids";
+import { db } from "../db/index.js";
+import { providerConfigs, providerSyncFiles, webhookEvents } from "../db/schema.js";
+import { createId } from "./ids.js";
 import {
   normalizeKbizStatementRows,
   parseKbizStatementText,
   type MatchablePromptpayTransactionInput
-} from "./kbiz-statement";
-import { now } from "./time";
+} from "./kbiz-statement.js";
+import { now } from "./time.js";
 
 type MatchResult = {
   total: number;

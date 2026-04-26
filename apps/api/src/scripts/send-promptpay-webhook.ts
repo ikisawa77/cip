@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 
-import { db, pool } from "../db";
-import { paymentIntents, providerConfigs } from "../db/schema";
-import { signWebhookPayload } from "../lib/security";
+import { db, pool } from "../db/index.js";
+import { paymentIntents, providerConfigs } from "../db/schema.js";
+import { signWebhookPayload } from "../lib/security.js";
 
 type CliOptions = {
   baseUrl: string;

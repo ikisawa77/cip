@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-import { env } from "../config/env";
+import { env } from "../config/env.js";
 
 const key = createHash("sha256").update(env.sessionSecret).digest();
 

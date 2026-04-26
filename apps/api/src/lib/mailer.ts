@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 
-import { env, isProduction } from "../config/env";
+import { env, isProduction } from "../config/env.js";
 
 export async function sendOtpEmail(email: string, otp: string) {
   if (!env.smtpHost || !env.smtpUser) {

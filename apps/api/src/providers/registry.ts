@@ -1,9 +1,9 @@
-import type { ProviderAdapter } from "./types";
-import { peamsub24hrAdapter } from "./peamsub24hr";
-import { createScaffoldAdapter } from "./scaffold";
-import { pays24SellerAdapter } from "./pays24seller";
-import { rdcwAdapter } from "./rdcw";
-import { wepayAdapter } from "./wepay";
+import type { ProviderAdapter } from "./types.js";
+import { peamsub24hrAdapter } from "./peamsub24hr.js";
+import { createScaffoldAdapter } from "./scaffold.js";
+import { pays24SellerAdapter } from "./pays24seller.js";
+import { rdcwAdapter } from "./rdcw.js";
+import { wepayAdapter } from "./wepay.js";
 
 export const providerKeys = ["promptpay", "wepay", "24payseller", "peamsub24hr", "kbiz", "truemoney", "rdcw"] as const;
 export type ProviderKey = (typeof providerKeys)[number];

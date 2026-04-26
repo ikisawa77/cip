@@ -3,10 +3,10 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { eq } from "drizzle-orm";
 
-import { env, isProduction } from "../config/env";
-import { db } from "../db";
-import { sessions, users } from "../db/schema";
-import { now } from "./time";
+import { env, isProduction } from "../config/env.js";
+import { db } from "../db/index.js";
+import { sessions, users } from "../db/schema.js";
+import { now } from "./time.js";
 
 export type AuthUser = {
   id: string;

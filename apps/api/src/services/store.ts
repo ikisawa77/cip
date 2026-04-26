@@ -17,8 +17,8 @@ import {
   type WalletTopupInput
 } from "@cip/shared";
 
-import { env } from "../config/env";
-import { db } from "../db";
+import { env } from "../config/env.js";
+import { db } from "../db/index.js";
 import {
   auditLogs,
   categories,
@@ -39,19 +39,19 @@ import {
   walletTransactions,
   webhookEvents,
   providerSyncFiles
-} from "../db/schema";
-import { createId } from "../lib/ids";
-import { runKbizStatementImport } from "../lib/kbiz-import";
-import { createPromptpayPayload, createPromptpayQrDataUrl, maskPromptpayReceiver } from "../lib/promptpay";
-import { decryptPayload, encryptPayload } from "../lib/security";
-import { minutesFromNow, now } from "../lib/time";
+} from "../db/schema.js";
+import { createId } from "../lib/ids.js";
+import { runKbizStatementImport } from "../lib/kbiz-import.js";
+import { createPromptpayPayload, createPromptpayQrDataUrl, maskPromptpayReceiver } from "../lib/promptpay.js";
+import { decryptPayload, encryptPayload } from "../lib/security.js";
+import { minutesFromNow, now } from "../lib/time.js";
 import {
   getProviderAdapter,
   getProviderAdapterByKey,
   getProviderKeyForProductType,
   providerKeys,
   type ProviderKey
-} from "../providers/registry";
+} from "../providers/registry.js";
 
 export async function getCatalog() {
   const categoryRows = await db.select().from(categories).orderBy(asc(categories.name));

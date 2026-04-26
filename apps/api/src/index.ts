@@ -22,8 +22,8 @@ import {
   walletTopupSchema
 } from "@cip/shared";
 
-import { env, isProduction } from "./config/env";
-import { db } from "./db";
+import { env, isProduction } from "./config/env.js";
+import { db } from "./db/index.js";
 import {
   categories,
   orders,
@@ -32,7 +32,7 @@ import {
   sessions,
   users,
   webhookEvents
-} from "./db/schema";
+} from "./db/schema.js";
 import {
   attachAuthUser,
   clearSessionCookie,
@@ -42,18 +42,18 @@ import {
   requireAuth,
   sessionExpiresAtFrom,
   setSessionCookie
-} from "./lib/auth";
-import { createId } from "./lib/ids";
-import { normalizeKbizStatementRows, parseKbizStatementText } from "./lib/kbiz-statement";
-import { sendOtpEmail } from "./lib/mailer";
-import { verifyWebhookSignature } from "./lib/security";
-import { minutesFromNow, now } from "./lib/time";
-import { isProviderKey } from "./providers/registry";
-import { map24PaysellerStatus } from "./providers/pays24seller";
-import { mapPeamsub24hrStatus } from "./providers/peamsub24hr";
-import { mapRdcwStatus } from "./providers/rdcw";
-import { mapTruemoneyPaymentStatus } from "./providers/truemoney";
-import { mapWepayStatus } from "./providers/wepay";
+} from "./lib/auth.js";
+import { createId } from "./lib/ids.js";
+import { normalizeKbizStatementRows, parseKbizStatementText } from "./lib/kbiz-statement.js";
+import { sendOtpEmail } from "./lib/mailer.js";
+import { verifyWebhookSignature } from "./lib/security.js";
+import { minutesFromNow, now } from "./lib/time.js";
+import { isProviderKey } from "./providers/registry.js";
+import { map24PaysellerStatus } from "./providers/pays24seller.js";
+import { mapPeamsub24hrStatus } from "./providers/peamsub24hr.js";
+import { mapRdcwStatus } from "./providers/rdcw.js";
+import { mapTruemoneyPaymentStatus } from "./providers/truemoney.js";
+import { mapWepayStatus } from "./providers/wepay.js";
 import {
   cleanupExpiredOtps,
   cleanupExpiredPaymentIntents,
@@ -104,7 +104,7 @@ import {
   updateAdminCategory,
   updateAdminInventoryItem,
   upsertAdminProviderConfig
-} from "./services/store";
+} from "./services/store.js";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(currentDir, "../public");

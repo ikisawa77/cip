@@ -1,4 +1,4 @@
-import { syncProvider } from "../services/store";
+import { syncProvider } from "../services/store.js";
 
 function readIntervalMs() {
   const raw = Number(process.env.KBIZ_SYNC_INTERVAL_MS ?? process.env.KBIZ_SYNC_INTERVAL_MINUTES ?? 300000);
