@@ -78,8 +78,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ensure-mariadb
 if errorlevel 1 goto :dbfail
 
 echo.
-echo [4/6] Pushing database schema...
-call "%PNPM_CMD%" db:push
+echo [4/6] Preparing database schema and migrations...
+call "%PNPM_CMD%" db:prepare:no-seed
 if errorlevel 1 goto :dbfail
 
 echo.

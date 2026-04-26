@@ -112,6 +112,13 @@ if ($Mode -eq "run") {
     Add-Error "node_modules is missing, run pnpm install or first-time-setup.bat first"
   } else {
     Add-Ok "node_modules found"
+
+    & $pnpmCommand.Source --filter "@cip/web" exec esbuild --version 1>$null 2>$null
+    if ($LASTEXITCODE -eq 0) {
+      Add-Ok "web esbuild command is available"
+    } else {
+      Add-Error "web esbuild binary check failed; run pnpm repair:esbuild"
+    }
   }
 
   if (-not (Test-Path (Join-Path $repoRoot ".env.local")) -and -not (Test-Path (Join-Path $repoRoot ".env"))) {

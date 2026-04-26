@@ -17,7 +17,7 @@ import {
   type WalletTopupInput
 } from "@cip/shared";
 
-import { env } from "../config/env.js";
+import { env, isProduction } from "../config/env.js";
 import { db } from "../db/index.js";
 import {
   auditLogs,
@@ -38,6 +38,7 @@ import {
   users,
   walletTransactions,
   webhookEvents,
+  webhookReplayAttempts,
   providerSyncFiles
 } from "../db/schema.js";
 import { createId } from "../lib/ids.js";
@@ -196,6 +197,66 @@ export async function getPromptpayConfigForWebhook() {
   return promptpay;
 }
 
+function resolveProviderSecretRefs(value: unknown): unknown {
+  if (typeof value === "string") {
+    const envMatch = value.match(/^env:([A-Z0-9_]+)$/i);
+    if (envMatch) {
+      return process.env[envMatch[1]!] ?? "";
+    }
+
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => resolveProviderSecretRefs(item));
+  }
+
+  if (isRecord(value)) {
+    if (typeof value.$env === "string") {
+      return process.env[value.$env] ?? "";
+    }
+
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolveProviderSecretRefs(item)]));
+  }
+
+  return value;
+}
+
+function assertProductionSecretRefs(config: unknown) {
+  if (!isProduction) {
+    return;
+  }
+
+  const secretKeys = ["apiKey", "apiSecret", "callbackSecret", "webhookSecret", "token", "password", "clientSecret"];
+  const stack: Array<{ path: string; value: unknown }> = [{ path: "config", value: config }];
+
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (Array.isArray(current.value)) {
+      current.value.forEach((item, index) => stack.push({ path: `${current.path}[${index}]`, value: item }));
+      continue;
+    }
+
+    if (!isRecord(current.value)) {
+      continue;
+    }
+
+    for (const [key, value] of Object.entries(current.value)) {
+      const nextPath = `${current.path}.${key}`;
+      if (secretKeys.some((secretKey) => key.toLowerCase().includes(secretKey.toLowerCase()))) {
+        const isEnvRef =
+          (typeof value === "string" && /^env:[A-Z0-9_]+$/i.test(value)) ||
+          (isRecord(value) && typeof value.$env === "string");
+        if (typeof value === "string" && value.trim() && !isEnvRef) {
+          throw new Error(`${nextPath} must use env:VARIABLE in production`);
+        }
+      }
+
+      stack.push({ path: nextPath, value });
+    }
+  }
+}
+
 export async function getProviderConfigSnapshot(providerKey: ProviderKey) {
   const row = await getProviderConfigRow(providerKey);
 
@@ -208,9 +269,10 @@ export async function getProviderConfigSnapshot(providerKey: ProviderKey) {
 
   try {
     const parsed = JSON.parse(row.configJson) as unknown;
+    const config = typeof parsed === "object" && parsed && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
     return {
       isEnabled: row.isEnabled,
-      config: typeof parsed === "object" && parsed && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
+      config: resolveProviderSecretRefs(config) as Record<string, unknown>
     };
   } catch {
     return {
@@ -1269,7 +1331,8 @@ export async function upsertAdminProviderConfig(
 ) {
   const timestamp = now();
   const configJson = input.configJson.trim() || "{}";
-  JSON.parse(configJson);
+  const parsedConfig = JSON.parse(configJson) as unknown;
+  assertProductionSecretRefs(parsedConfig);
 
   const [existing] = await db.select().from(providerConfigs).where(eq(providerConfigs.providerKey, providerKey)).limit(1);
 
@@ -1488,9 +1551,10 @@ export async function syncProvider(providerKey: ProviderKey) {
   }
 
   const adapter = getProviderAdapterByKey(providerKey);
+  const providerConfig = await getProviderConfigSnapshot(providerKey);
   const result = await adapter.sync?.({
     providerKey,
-    config: JSON.parse(config.configJson) as Record<string, unknown>
+    config: providerConfig.config
   });
 
   return {
@@ -1505,14 +1569,36 @@ export async function getAdminWebhookEvents(webhookFilters?: {
   providerKey?: string;
   eventType?: string;
   processed?: string;
+  replayStatus?: string;
 } & AdminPaginationInput) {
   const rows = await db.select().from(webhookEvents).orderBy(desc(webhookEvents.createdAt));
+  const attempts = await db.select().from(webhookReplayAttempts).orderBy(desc(webhookReplayAttempts.createdAt));
+  const attemptsByEventId = new Map<string, typeof attempts>();
+  for (const attempt of attempts) {
+    const bucket = attemptsByEventId.get(attempt.webhookEventId) ?? [];
+    bucket.push(attempt);
+    attemptsByEventId.set(attempt.webhookEventId, bucket);
+  }
+
   const normalizedQuery = webhookFilters?.query?.trim().toLowerCase() ?? "";
   const normalizedProviderKey = webhookFilters?.providerKey?.trim().toLowerCase() ?? "all";
   const normalizedEventType = webhookFilters?.eventType?.trim().toLowerCase() ?? "all";
   const normalizedProcessed = webhookFilters?.processed?.trim().toLowerCase() ?? "all";
+  const normalizedReplayStatus = webhookFilters?.replayStatus?.trim().toLowerCase() ?? "all";
 
-  const filteredRows = rows.filter((row) => {
+  const enrichedRows = rows.map((row) => {
+    const eventAttempts = attemptsByEventId.get(row.id) ?? [];
+    const latestAttempt = eventAttempts[0] ?? null;
+    return {
+      ...row,
+      replayCount: eventAttempts.length,
+      lastReplayOk: latestAttempt?.ok ?? null,
+      lastReplayMessage: latestAttempt?.message ?? null,
+      lastReplayAt: latestAttempt?.createdAt.toISOString() ?? null
+    };
+  });
+
+  const filteredRows = enrichedRows.filter((row) => {
     if (normalizedProviderKey !== "all" && row.providerKey.toLowerCase() !== normalizedProviderKey) {
       return false;
     }
@@ -1528,16 +1614,62 @@ export async function getAdminWebhookEvents(webhookFilters?: {
       }
     }
 
+    if (normalizedReplayStatus === "failed" && row.lastReplayOk !== false) {
+      return false;
+    }
+
+    if (normalizedReplayStatus === "ok" && row.lastReplayOk !== true) {
+      return false;
+    }
+
+    if (normalizedReplayStatus === "never" && row.replayCount > 0) {
+      return false;
+    }
+
     if (!normalizedQuery) {
       return true;
     }
 
-    return [row.id, row.providerKey, row.eventType, row.payloadJson].some((value) =>
+    return [row.id, row.providerKey, row.eventType, row.payloadJson, row.lastReplayMessage ?? ""].some((value) =>
       value.toLowerCase().includes(normalizedQuery)
     );
   });
 
   return paginateAdminItems(filteredRows, webhookFilters, 8);
+}
+
+export async function getWebhookReplayHistory(webhookEventId: string) {
+  const rows = await db
+    .select()
+    .from(webhookReplayAttempts)
+    .where(eq(webhookReplayAttempts.webhookEventId, webhookEventId))
+    .orderBy(desc(webhookReplayAttempts.createdAt))
+    .limit(25);
+
+  return rows.map((row) => ({
+    id: row.id,
+    webhookEventId: row.webhookEventId,
+    actorUserId: row.actorUserId,
+    ok: row.ok,
+    message: row.message,
+    createdAt: row.createdAt.toISOString()
+  }));
+}
+
+async function recordWebhookReplayAttempt(input: {
+  webhookEventId: string;
+  actorUserId?: string;
+  ok: boolean;
+  message: string;
+}) {
+  await db.insert(webhookReplayAttempts).values({
+    id: createId(),
+    webhookEventId: input.webhookEventId,
+    actorUserId: input.actorUserId ?? null,
+    ok: input.ok,
+    message: input.message.slice(0, 4000),
+    createdAt: now()
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1547,7 +1679,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export async function replayWebhookEventByAdmin(webhookEventId: string, actorUserId?: string) {
   const [event] = await db.select().from(webhookEvents).where(eq(webhookEvents.id, webhookEventId)).limit(1);
   if (!event) {
-    throw new Error("ไม่พบ webhook event");
+    throw new Error("webhook event not found");
   }
 
   let parsedPayload: unknown = null;
@@ -1560,7 +1692,9 @@ export async function replayWebhookEventByAdmin(webhookEventId: string, actorUse
   if (event.eventType === "provider.order_update" && isRecord(parsedPayload)) {
     const status = String(parsedPayload.status ?? "");
     if (!["processing", "fulfilled", "failed", "manual_review"].includes(status)) {
-      throw new Error("provider.order_update ไม่มี status ที่ replay ได้");
+      const message = "provider.order_update has no replayable status";
+      await recordWebhookReplayAttempt({ webhookEventId: event.id, actorUserId, ok: false, message });
+      throw new Error(message);
     }
 
     const result = await applyProviderOrderUpdate({
@@ -1577,9 +1711,11 @@ export async function replayWebhookEventByAdmin(webhookEventId: string, actorUse
     });
 
     await logAudit("webhook_event", event.id, "replay", `${event.providerKey}:${event.eventType}`, actorUserId);
+    const message = result.ok ? "replayed provider order update" : result.message;
+    await recordWebhookReplayAttempt({ webhookEventId: event.id, actorUserId, ok: result.ok, message });
     return {
       ok: result.ok,
-      message: result.ok ? "replayed provider order update" : result.message
+      message
     };
   }
 
@@ -1591,7 +1727,9 @@ export async function replayWebhookEventByAdmin(webhookEventId: string, actorUse
           ? parsedPayload.reference
           : null;
     if (!referenceCode) {
-      throw new Error("payment.completed ไม่มี referenceCode สำหรับ replay");
+      const message = "payment.completed has no referenceCode for replay";
+      await recordWebhookReplayAttempt({ webhookEventId: event.id, actorUserId, ok: false, message });
+      throw new Error(message);
     }
 
     const settleResult =
@@ -1611,6 +1749,7 @@ export async function replayWebhookEventByAdmin(webhookEventId: string, actorUse
           };
 
     await logAudit("webhook_event", event.id, "replay", `${event.providerKey}:${event.eventType}`, actorUserId);
+    await recordWebhookReplayAttempt({ webhookEventId: event.id, actorUserId, ok: settleResult.ok, message: settleResult.message });
     return {
       ok: settleResult.ok,
       message: settleResult.message
@@ -1620,15 +1759,18 @@ export async function replayWebhookEventByAdmin(webhookEventId: string, actorUse
   if (event.providerKey === "kbiz_import" && event.eventType === "statement.file.processed") {
     const result = await runKbizStatementImport(matchPromptpayTransactions);
     await logAudit("webhook_event", event.id, "replay", `${event.providerKey}:${event.eventType}`, actorUserId);
+    const message = `${result.note} | imported=${result.imported} matched=${result.matched} unmatched=${result.unmatched}`;
+    await recordWebhookReplayAttempt({ webhookEventId: event.id, actorUserId, ok: result.ok, message });
     return {
       ok: result.ok,
-      message: `${result.note} | imported=${result.imported} matched=${result.matched} unmatched=${result.unmatched}`
+      message
     };
   }
 
-  throw new Error(`ยังไม่รองรับ replay สำหรับ ${event.providerKey}:${event.eventType}`);
+  const message = `replay is not supported for ${event.providerKey}:${event.eventType}`;
+  await recordWebhookReplayAttempt({ webhookEventId: event.id, actorUserId, ok: false, message });
+  throw new Error(message);
 }
-
 export async function getKbizMonitoringSummary(): Promise<KbizMonitoringSummary> {
   const [countRow] = await db
     .select({ total: sql<number>`count(*)` })

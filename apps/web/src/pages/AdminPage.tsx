@@ -113,6 +113,19 @@ type WebhookEventRow = {
   payloadJson: string;
   processed: boolean;
   createdAt: string;
+  replayCount: number;
+  lastReplayOk: boolean | null;
+  lastReplayMessage: string | null;
+  lastReplayAt: string | null;
+};
+
+type WebhookReplayAttemptRow = {
+  id: string;
+  webhookEventId: string;
+  actorUserId: string | null;
+  ok: boolean;
+  message: string;
+  createdAt: string;
 };
 
 type PaginatedResponse<T> = {
@@ -256,10 +269,10 @@ const providerConfigExamples: Record<string, { title: string; description: strin
       mode: "webhook",
       endpoint: "https://provider.example.com/api/orders",
       method: "POST",
-      apiKey: "replace-me",
+      apiKey: "env:WEPAY_API_KEY",
       authHeaderName: "Authorization",
       authScheme: "Bearer",
-      callbackSecret: "wepay-dev-secret",
+      callbackSecret: "env:WEPAY_CALLBACK_SECRET",
       staticPayload: {
         channel: "cip-store"
       }
@@ -272,10 +285,10 @@ const providerConfigExamples: Record<string, { title: string; description: strin
       mode: "webhook",
       endpoint: "https://provider.example.com/api/orders",
       method: "POST",
-      apiKey: "replace-me",
+      apiKey: "env:WEPAY_API_KEY",
       authHeaderName: "Authorization",
       authScheme: "Bearer",
-      callbackSecret: "24payseller-dev-secret",
+      callbackSecret: "env:PAYS24SELLER_CALLBACK_SECRET",
       staticPayload: {
         productGroup: "id-pass",
         source: "cip-store"
@@ -289,10 +302,10 @@ const providerConfigExamples: Record<string, { title: string; description: strin
       mode: "webhook",
       endpoint: "https://provider.example.com/api/premium-orders",
       method: "POST",
-      apiKey: "replace-me",
+      apiKey: "env:PEAMSUB24HR_API_KEY",
       authHeaderName: "Authorization",
       authScheme: "Bearer",
-      callbackSecret: "peamsub24hr-dev-secret",
+      callbackSecret: "env:PEAMSUB24HR_CALLBACK_SECRET",
       staticPayload: {
         packageType: "premium",
         source: "cip-store"
@@ -303,7 +316,7 @@ const providerConfigExamples: Record<string, { title: string; description: strin
     title: "TrueMoney top-up bridge",
     description: "Webhook config example for truemoney_gift payment intents and external bridge callbacks.",
     value: {
-      callbackSecret: "truemoney-dev-secret",
+      callbackSecret: "env:TRUEMONEY_CALLBACK_SECRET",
       acceptedStatuses: ["success", "redeemed", "completed"],
       notes: "POST /api/webhooks/truemoney with referenceCode and status=success"
     }
@@ -315,10 +328,10 @@ const providerConfigExamples: Record<string, { title: string; description: strin
       mode: "webhook",
       endpoint: "https://provider.example.com/api/stock-orders",
       method: "POST",
-      apiKey: "replace-me",
+      apiKey: "env:RDCW_API_KEY",
       authHeaderName: "Authorization",
       authScheme: "Bearer",
-      callbackSecret: "rdcw-dev-secret",
+      callbackSecret: "env:RDCW_CALLBACK_SECRET",
       staticPayload: {
         source: "cip-store",
         category: "account-stock"
@@ -505,6 +518,7 @@ type AdminSavedFilters = {
   webhookProviderFilter: string;
   webhookEventTypeFilter: string;
   webhookProcessedFilter: string;
+  webhookReplayStatusFilter: string;
 };
 
 function readAdminSavedFilters(): Partial<AdminSavedFilters> {
@@ -639,6 +653,7 @@ export function AdminPage() {
   const [webhookProviderFilter, setWebhookProviderFilter] = useState(initialSavedFilters.webhookProviderFilter ?? "all");
   const [webhookEventTypeFilter, setWebhookEventTypeFilter] = useState(initialSavedFilters.webhookEventTypeFilter ?? "all");
   const [webhookProcessedFilter, setWebhookProcessedFilter] = useState(initialSavedFilters.webhookProcessedFilter ?? "all");
+  const [webhookReplayStatusFilter, setWebhookReplayStatusFilter] = useState(initialSavedFilters.webhookReplayStatusFilter ?? "all");
   const [webhookPage, setWebhookPage] = useState(1);
   const [selectedWebhookId, setSelectedWebhookId] = useState<string | null>(null);
   const [webhookMessage, setWebhookMessage] = useState<string | null>(null);
@@ -781,7 +796,7 @@ export function AdminPage() {
     enabled: user?.role === "admin"
   });
   const webhooksQuery = useQuery({
-    queryKey: ["admin", "webhooks", webhookSearch, webhookProviderFilter, webhookEventTypeFilter, webhookProcessedFilter, webhookPage],
+    queryKey: ["admin", "webhooks", webhookSearch, webhookProviderFilter, webhookEventTypeFilter, webhookProcessedFilter, webhookReplayStatusFilter, webhookPage],
     queryFn: () =>
       apiFetch<PaginatedResponse<WebhookEventRow>>(
         `/api/admin/webhooks${buildQueryString({
@@ -789,11 +804,17 @@ export function AdminPage() {
           providerKey: webhookProviderFilter !== "all" ? webhookProviderFilter : undefined,
           eventType: webhookEventTypeFilter !== "all" ? webhookEventTypeFilter : undefined,
           processed: webhookProcessedFilter !== "all" ? webhookProcessedFilter : undefined,
+          replayStatus: webhookReplayStatusFilter !== "all" ? webhookReplayStatusFilter : undefined,
           page: String(webhookPage),
           pageSize: "8"
         })}`
       ),
     enabled: user?.role === "admin"
+  });
+  const webhookReplayHistoryQuery = useQuery({
+    queryKey: ["admin", "webhooks", "replay-history", selectedWebhookId],
+    queryFn: () => apiFetch<WebhookReplayAttemptRow[]>(`/api/admin/webhooks/${selectedWebhookId}/replay-history`),
+    enabled: user?.role === "admin" && Boolean(selectedWebhookId)
   });
 
   const providerMutation = useMutation({
@@ -827,6 +848,7 @@ export function AdminPage() {
       setProviderSyncMessage(`${result.providerKey}: ${result.note}`);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin", "webhooks"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "webhooks", "replay-history"] }),
         queryClient.invalidateQueries({ queryKey: ["admin", "kbiz-monitoring"] }),
         queryClient.invalidateQueries({ queryKey: ["admin", "jobs"] })
       ]);
@@ -1276,7 +1298,8 @@ export function AdminPage() {
       webhookSearch,
       webhookProviderFilter,
       webhookEventTypeFilter,
-      webhookProcessedFilter
+      webhookProcessedFilter,
+      webhookReplayStatusFilter
     });
   }, [
     paymentSearch,
@@ -1292,7 +1315,8 @@ export function AdminPage() {
     webhookSearch,
     webhookProviderFilter,
     webhookEventTypeFilter,
-    webhookProcessedFilter
+    webhookProcessedFilter,
+    webhookReplayStatusFilter
   ]);
 
   useEffect(() => {
@@ -1309,7 +1333,7 @@ export function AdminPage() {
 
   useEffect(() => {
     setWebhookPage(1);
-  }, [webhookSearch, webhookProviderFilter, webhookEventTypeFilter, webhookProcessedFilter]);
+  }, [webhookSearch, webhookProviderFilter, webhookEventTypeFilter, webhookProcessedFilter, webhookReplayStatusFilter]);
 
   useEffect(() => {
     const currentWebhookRows = webhooksQuery.data?.items ?? [];
@@ -1432,6 +1456,7 @@ export function AdminPage() {
     setWebhookProviderFilter("all");
     setWebhookEventTypeFilter("all");
     setWebhookProcessedFilter("all");
+    setWebhookReplayStatusFilter("all");
   }
 
   function clearSavedAdminFilters() {
@@ -3169,7 +3194,7 @@ export function AdminPage() {
             ทั้งหมด {pagedWebhooks.total} รายการ
           </div>
         </div>
-        <div className="mt-4 grid gap-3 xl:grid-cols-[1.2fr_0.8fr_0.9fr_0.8fr_auto]">
+        <div className="mt-4 grid gap-3 xl:grid-cols-[1.2fr_0.8fr_0.9fr_0.8fr_0.8fr_auto]">
           <input className="input-field" onChange={(event) => setWebhookSearch(event.target.value)} placeholder="ค้นหา provider / event / payload / id" value={webhookSearch} />
           <select className="input-field" onChange={(event) => setWebhookProviderFilter(event.target.value)} value={webhookProviderFilter}>
             <option value="all">ทุก provider</option>
@@ -3196,6 +3221,12 @@ export function AdminPage() {
             <option value="processed">processed only</option>
             <option value="pending">pending only</option>
           </select>
+          <select className="input-field" onChange={(event) => setWebhookReplayStatusFilter(event.target.value)} value={webhookReplayStatusFilter}>
+            <option value="all">all replay states</option>
+            <option value="failed">failed replay only</option>
+            <option value="ok">successful replay only</option>
+            <option value="never">never replayed</option>
+          </select>
           <button className="secondary-button rounded-full px-4 py-2 text-xs" onClick={resetWebhookFilters} type="button">
             รีเซ็ต filter
           </button>
@@ -3218,6 +3249,10 @@ export function AdminPage() {
                       <div className="text-sm font-medium text-slate-900">{event.providerKey}</div>
                       <div className="mt-1 text-xs uppercase tracking-[0.2em] text-[var(--brand)]">{event.eventType}</div>
                       <div className="mt-2 text-xs text-slate-500">{formatDate(event.createdAt)}</div>
+                      <div className="mt-2 text-xs text-slate-500">
+                        replay {event.replayCount}x
+                        {event.lastReplayAt ? ` • ${event.lastReplayOk ? "ok" : "failed"} • ${formatDate(event.lastReplayAt)}` : ""}
+                      </div>
                     </div>
                     <div className={`rounded-full px-3 py-1 text-[11px] font-medium ${event.processed ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
                       {event.processed ? "processed" : "pending"}
@@ -3259,6 +3294,23 @@ export function AdminPage() {
                 <div className="mt-4 rounded-[1.25rem] bg-white/80 px-4 py-3">
                   <div className="font-medium text-slate-950">Webhook Payload</div>
                   <pre className="mt-2 overflow-auto rounded-xl bg-slate-950 px-3 py-3 text-xs text-slate-100">{selectedWebhook.payloadJson}</pre>
+                </div>
+                <div className="mt-4 rounded-[1.25rem] bg-white/80 px-4 py-3">
+                  <div className="font-medium text-slate-950">Replay History</div>
+                  <div className="mt-3 space-y-2">
+                    {(webhookReplayHistoryQuery.data ?? []).map((attempt) => (
+                      <div className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs text-slate-600" key={attempt.id}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className={attempt.ok ? "text-emerald-700" : "text-rose-700"}>{attempt.ok ? "ok" : "failed"}</span>
+                          <span>{formatDate(attempt.createdAt)}</span>
+                        </div>
+                        <div className="mt-1 break-words">{attempt.message}</div>
+                      </div>
+                    ))}
+                    {webhookReplayHistoryQuery.data?.length === 0 ? (
+                      <div className="text-xs text-slate-500">ยังไม่มี replay attempt สำหรับ event นี้</div>
+                    ) : null}
+                  </div>
                 </div>
               </>
             ) : (

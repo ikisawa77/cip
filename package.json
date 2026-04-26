@@ -21,6 +21,8 @@
     "check": "pnpm -r check",
     "db:push": "pnpm --filter @cip/api db:push",
     "db:seed": "pnpm --filter @cip/api db:seed",
+    "db:prepare": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/db-prepare-local.ps1",
+    "db:prepare:no-seed": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/db-prepare-local.ps1 -SkipSeed",
     "doctor:local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/doctor-local.ps1",
     "doctor:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/doctor-local.ps1 -Mode setup",
     "doctor:run": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/doctor-local.ps1 -Mode run",
@@ -28,7 +30,12 @@
     "standardize:repair": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/standardize-local.ps1 -Mode repair",
     "standardize:export": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/standardize-local.ps1 -Mode export",
     "standardize:compare": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/compare-machine-standard.ps1",
+    "repair:esbuild": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/repair-esbuild-local.ps1",
     "test": "pnpm -r test",
+    "test:e2e": "playwright test",
     "setup:local": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-local.ps1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
   }
 }

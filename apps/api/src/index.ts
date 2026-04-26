@@ -71,6 +71,7 @@ import {
   getAdminInventorySummary,
   getAdminOrders,
   getAdminWebhookEvents,
+  getWebhookReplayHistory,
   getPromptpayConfigForWebhook,
   getAdminPaymentIntents,
   getAdminProviders,
@@ -894,9 +895,14 @@ app.get("/api/admin/webhooks", requireAdmin, async (req, res) => {
   const providerKey = typeof req.query.providerKey === "string" ? req.query.providerKey : undefined;
   const eventType = typeof req.query.eventType === "string" ? req.query.eventType : undefined;
   const processed = typeof req.query.processed === "string" ? req.query.processed : undefined;
+  const replayStatus = typeof req.query.replayStatus === "string" ? req.query.replayStatus : undefined;
   const page = parsePaginationNumber(req.query.page, 1);
   const pageSize = parsePaginationNumber(req.query.pageSize, 8);
-  res.json(await getAdminWebhookEvents({ query, providerKey, eventType, processed, page, pageSize }));
+  res.json(await getAdminWebhookEvents({ query, providerKey, eventType, processed, replayStatus, page, pageSize }));
+});
+
+app.get("/api/admin/webhooks/:id/replay-history", requireAdmin, async (req, res) => {
+  res.json(await getWebhookReplayHistory(String(req.params.id)));
 });
 
 app.post("/api/admin/webhooks/:id/replay", requireAdmin, async (req, res) => {
@@ -1361,7 +1367,11 @@ app.get("/{*path}", (req, res, next) => {
 });
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(error);
+  console.error(
+    error instanceof Error
+      ? { name: error.name, message: error.message, stack: error.stack }
+      : { message: String(error) }
+  );
   res.status(500).json({ message: error instanceof Error ? error.message : "เกิดข้อผิดพลาดภายในระบบ" });
 });
 

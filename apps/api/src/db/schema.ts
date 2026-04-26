@@ -244,6 +244,15 @@ export const webhookEvents = mysqlTable("webhook_events", {
   createdAt: datetime("created_at").notNull()
 });
 
+export const webhookReplayAttempts = mysqlTable("webhook_replay_attempts", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  webhookEventId: varchar("webhook_event_id", { length: 36 }).notNull(),
+  actorUserId: varchar("actor_user_id", { length: 36 }),
+  ok: boolean("ok").notNull().default(false),
+  message: text("message").notNull(),
+  createdAt: datetime("created_at").notNull()
+});
+
 export const providerSyncFiles = mysqlTable(
   "provider_sync_files",
   {
